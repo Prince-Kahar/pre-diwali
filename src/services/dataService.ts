@@ -151,12 +151,26 @@ class PreDiwaliDataStore {
 
       const r = localStorage.getItem(STORAGE_KEYS.REGISTRATIONS);
       if (r) {
-        this.registrations = JSON.parse(r).filter((item: Registration) => !item.id.startsWith('reg-seed-'));
+        this.registrations = JSON.parse(r)
+          .filter((item: Registration) => !item.id.startsWith('reg-seed-'))
+          .map((item: Registration) => {
+            if (item.expected_amount_minor_units === 25000) {
+              return { ...item, expected_amount_minor_units: 30000 };
+            }
+            return item;
+          });
       }
 
       const p = localStorage.getItem(STORAGE_KEYS.PAYMENTS);
       if (p) {
-        this.payments = JSON.parse(p).filter((item: PaymentRecord) => !item.id.startsWith('pay-seed-'));
+        this.payments = JSON.parse(p)
+          .filter((item: PaymentRecord) => !item.id.startsWith('pay-seed-'))
+          .map((item: PaymentRecord) => {
+            if (item.expected_amount_minor_units === 25000) {
+              return { ...item, expected_amount_minor_units: 30000 };
+            }
+            return item;
+          });
       }
 
       const ps = localStorage.getItem(STORAGE_KEYS.PASSES);
@@ -413,6 +427,10 @@ class PreDiwaliDataStore {
     );
 
     if (existing) {
+      if (existing.payment_status === 'PENDING' && existing.expected_amount_minor_units === 25000) {
+        existing.expected_amount_minor_units = this.event.registration_fee_minor_units || 30000;
+        this.persist();
+      }
       return {
         registration: existing,
         alreadyRegistered: true,
@@ -513,6 +531,11 @@ class PreDiwaliDataStore {
       throw new Error('This transaction reference ID has already been submitted for another registration.');
     }
 
+    if (reg.payment_status === 'PENDING' && reg.expected_amount_minor_units === 25000) {
+      reg.expected_amount_minor_units = this.event.registration_fee_minor_units || 30000;
+    }
+
+    const cleanRef = ref.trim().slice(0, 12);
     let payment = this.getPaymentForRegistration(registrationId);
     const now = new Date().toISOString();
 
@@ -521,7 +544,7 @@ class PreDiwaliDataStore {
         id: generateUUID(),
         registration_id: registrationId,
         provider: 'STATIC_UPI',
-        transaction_reference: ref,
+        transaction_reference: cleanRef,
         screenshot_url: screenshotUrl,
         expected_amount_minor_units: reg.expected_amount_minor_units,
         currency: reg.currency,
@@ -532,7 +555,10 @@ class PreDiwaliDataStore {
       };
       this.payments.push(payment);
     } else {
-      payment.transaction_reference = ref;
+      payment.transaction_reference = cleanRef;
+      if (payment.expected_amount_minor_units === 25000) {
+        payment.expected_amount_minor_units = reg.expected_amount_minor_units;
+      }
       if (screenshotUrl) payment.screenshot_url = screenshotUrl;
       payment.status = 'PENDING';
       payment.updated_at = now;
@@ -655,10 +681,46 @@ class PreDiwaliDataStore {
     );
 
     this.persist();
+
+    // Supabase cloud sync
+    if (isSupabaseConfigured && supabase) {
+      try {
+        await supabase
+          .from('payments')
+          .update({
+            status: 'PAID',
+            verified_at: now,
+            admin_notes: payment.admin_notes,
+            updated_at: now,
+          })
+          .eq('id', payment.id);
+
+        await supabase
+          .from('registrations')
+          .update({
+            payment_status: 'PAID',
+            updated_at: now,
+          })
+          .eq('id', reg.id);
+
+        await supabase
+          .from('entry_passes')
+          .upsert({
+            id: pass.id,
+            registration_id: pass.registration_id,
+            token_hash: pass.token_hash,
+            status: pass.status,
+            issued_at: pass.issued_at,
+          });
+      } catch (err) {
+        console.warn('Supabase verifyManualPaymentAdmin sync error:', err);
+      }
+    }
+
     return { payment, pass };
   }
 
-  public rejectManualPaymentAdmin(paymentId: string, adminId: string, reason: string): PaymentRecord {
+  public async rejectManualPaymentAdmin(paymentId: string, adminId: string, reason: string): Promise<PaymentRecord> {
     const payment = this.payments.find((p) => p.id === paymentId);
     if (!payment) throw new Error('Payment record not found');
 
@@ -688,6 +750,32 @@ class PreDiwaliDataStore {
     );
 
     this.persist();
+
+    // Supabase cloud sync
+    if (isSupabaseConfigured && supabase) {
+      try {
+        await supabase
+          .from('payments')
+          .update({
+            status: 'REJECTED',
+            verified_at: now,
+            rejection_reason: payment.rejection_reason,
+            updated_at: now,
+          })
+          .eq('id', payment.id);
+
+        await supabase
+          .from('registrations')
+          .update({
+            payment_status: 'REJECTED',
+            updated_at: now,
+          })
+          .eq('id', reg.id);
+      } catch (err) {
+        console.warn('Supabase rejectManualPaymentAdmin sync error:', err);
+      }
+    }
+
     return payment;
   }
 
@@ -720,6 +808,22 @@ class PreDiwaliDataStore {
     this.clientTokens[registrationId] = rawToken;
 
     this.persist();
+
+    // Supabase cloud sync
+    if (isSupabaseConfigured && supabase) {
+      try {
+        await supabase.from('entry_passes').upsert({
+          id: pass.id,
+          registration_id: pass.registration_id,
+          token_hash: pass.token_hash,
+          status: pass.status,
+          issued_at: pass.issued_at,
+        });
+      } catch (err) {
+        console.warn('Supabase issueEntryPass sync error:', err);
+      }
+    }
+
     return pass;
   }
 
@@ -801,16 +905,73 @@ class PreDiwaliDataStore {
       };
     }
 
-    // Determine token hash: if user entered raw token (starts with PREDIWALI_PASS_), hash it; otherwise compute hash
-    const computedHash = presentedTokenOrHash.startsWith('PREDIWALI_PASS_')
-      ? await hashToken(presentedTokenOrHash)
-      : (presentedTokenOrHash.length === 64 ? presentedTokenOrHash : await hashToken(presentedTokenOrHash));
+    // Determine token hash
+    const cleanToken = presentedTokenOrHash.trim();
+    const computedHash = cleanToken.startsWith('PREDIWALI_PASS_')
+      ? await hashToken(cleanToken)
+      : (cleanToken.length === 64 ? cleanToken.toLowerCase() : await hashToken(cleanToken));
 
     // Concurrency Lock on the specific token hash to eliminate race conditions
     const releaseLock = await this.acquireLock(`scan_${computedHash}`);
 
     try {
-      const pass = this.passes.find((p) => p.token_hash === computedHash);
+      let pass = this.passes.find((p) => p.token_hash === computedHash || p.id === cleanToken);
+
+      // Roll Number fallback: Staff or student may enter/scan Roll Number
+      if (!pass) {
+        const normRoll = normalizeRollNumber(cleanToken);
+        const regByRoll = this.registrations.find((r) => r.normalized_roll_number === normRoll);
+        if (regByRoll) {
+          pass = this.passes.find((p) => p.registration_id === regByRoll.id && p.status === 'VALID')
+            || this.passes.find((p) => p.registration_id === regByRoll.id);
+        }
+      }
+
+      // If not in local memory, check Supabase
+      if (!pass && isSupabaseConfigured && supabase) {
+        try {
+          const { data: dbPass } = await supabase
+            .from('entry_passes')
+            .select('*')
+            .eq('token_hash', computedHash)
+            .maybeSingle();
+
+          if (dbPass) {
+            pass = dbPass as EntryPass;
+            if (!this.passes.find((p) => p.id === pass!.id)) {
+              this.passes.push(pass);
+            }
+          } else {
+            // Check by roll number in Supabase
+            const normRoll = normalizeRollNumber(cleanToken);
+            const { data: dbReg } = await supabase
+              .from('registrations')
+              .select('*')
+              .eq('normalized_roll_number', normRoll)
+              .maybeSingle();
+
+            if (dbReg) {
+              if (!this.getRegistrationById(dbReg.id)) {
+                this.registrations.push(dbReg as Registration);
+              }
+              const { data: regPass } = await supabase
+                .from('entry_passes')
+                .select('*')
+                .eq('registration_id', dbReg.id)
+                .maybeSingle();
+
+              if (regPass) {
+                pass = regPass as EntryPass;
+                if (!this.passes.find((p) => p.id === pass!.id)) {
+                  this.passes.push(pass);
+                }
+              }
+            }
+          }
+        } catch (err) {
+          console.warn('Supabase remote pass lookup notice:', err);
+        }
+      }
 
       // Case 1: Pass does not exist
       if (!pass) {
@@ -826,6 +987,20 @@ class PreDiwaliDataStore {
         });
         this.persist();
 
+        if (isSupabaseConfigured && supabase) {
+          try {
+            await supabase.from('entry_scans').insert({
+              event_id: this.event.id,
+              staff_user_id: staffUserId,
+              scan_result: 'INVALID_PASS',
+              request_id: requestId,
+              reason_code: 'TOKEN_NOT_FOUND',
+            });
+          } catch (e) {
+            console.warn('Supabase log invalid scan notice:', e);
+          }
+        }
+
         return {
           success: false,
           status: 'INVALID_PASS',
@@ -833,7 +1008,26 @@ class PreDiwaliDataStore {
         };
       }
 
-      const reg = this.getRegistrationById(pass.registration_id);
+      let reg = this.getRegistrationById(pass.registration_id);
+      if (!reg && isSupabaseConfigured && supabase) {
+        try {
+          const { data: dbReg } = await supabase
+            .from('registrations')
+            .select('*')
+            .eq('id', pass.registration_id)
+            .maybeSingle();
+
+          if (dbReg) {
+            reg = dbReg as Registration;
+            if (!this.getRegistrationById(reg.id)) {
+              this.registrations.push(reg);
+            }
+          }
+        } catch (err) {
+          console.warn('Supabase remote reg lookup notice:', err);
+        }
+      }
+
       if (!reg) {
         return {
           success: false,
@@ -861,6 +1055,21 @@ class PreDiwaliDataStore {
         });
         this.persist();
 
+        if (isSupabaseConfigured && supabase) {
+          try {
+            await supabase.from('entry_scans').insert({
+              event_id: this.event.id,
+              pass_id: pass.id,
+              staff_user_id: staffUserId,
+              scan_result: 'ALREADY_USED',
+              request_id: requestId,
+              reason_code: 'PREVIOUSLY_REDEEMED',
+            });
+          } catch (e) {
+            console.warn('Supabase log duplicate scan notice:', e);
+          }
+        }
+
         return {
           success: false,
           status: 'ALREADY_USED',
@@ -868,7 +1077,7 @@ class PreDiwaliDataStore {
           student_name: reg.full_name,
           roll_number: reg.normalized_roll_number,
           previous_scan_at: pass.redeemed_at,
-          previous_staff_name: prevStaff?.display_name || 'Staff Member',
+          previous_staff_name: prevStaff?.display_name || pass.redeemed_by_name || 'Staff Member',
         };
       }
 
@@ -945,6 +1154,27 @@ class PreDiwaliDataStore {
       });
 
       this.persist();
+
+      // Cloud sync to Supabase
+      if (isSupabaseConfigured && supabase) {
+        try {
+          await supabase.from('entry_passes').update({
+            status: 'USED',
+            redeemed_at: now,
+            updated_at: now,
+          }).eq('id', pass.id);
+
+          await supabase.from('entry_scans').insert({
+            event_id: this.event.id,
+            pass_id: pass.id,
+            staff_user_id: staffUserId,
+            scan_result: 'ENTRY_APPROVED',
+            request_id: requestId,
+          });
+        } catch (e) {
+          console.warn('Supabase scan sync exception:', e);
+        }
+      }
 
       return {
         success: true,
@@ -1110,63 +1340,129 @@ class PreDiwaliDataStore {
           id: eventData.id || this.event.id,
           name: eventData.name || this.event.name,
           college_name: eventData.college_name || this.event.college_name,
-          registration_fee_minor_units: Number(eventData.registration_fee_minor_units) || this.event.registration_fee_minor_units,
+          registration_fee_minor_units: 30000,
           currency: eventData.currency || this.event.currency,
           maximum_capacity: eventData.maximum_capacity || this.event.maximum_capacity,
           registration_enabled: eventData.registration_enabled !== undefined ? eventData.registration_enabled : this.event.registration_enabled,
           payment_upi_id: eventData.payment_upi_id || this.event.payment_upi_id,
           payment_upi_name: eventData.payment_upi_name || this.event.payment_upi_name,
         };
+        if (eventData.registration_fee_minor_units !== 30000) {
+          await supabase.from('events').update({ registration_fee_minor_units: 30000 }).eq('id', this.event.id);
+        }
         this.persist();
-      } else {
-        // Events table is empty, insert default event so registrations foreign key succeeds
-        await supabase.from('events').insert({
-          id: this.event.id,
-          name: this.event.name,
-          college_name: this.event.college_name,
-          event_date: this.event.event_date,
-          venue: this.event.venue,
-          venue_directions: this.event.venue_directions,
-          registration_opens_at: this.event.registration_opens_at,
-          registration_closes_at: this.event.registration_closes_at,
-          registration_fee_minor_units: this.event.registration_fee_minor_units,
-          currency: this.event.currency,
-          max_capacity: this.event.max_capacity,
-          registration_enabled: this.event.registration_enabled,
-          entry_enabled: this.event.entry_enabled,
-          payment_mode: this.event.payment_mode,
-          payment_upi_id: this.event.payment_upi_id,
-          payment_upi_name: this.event.payment_upi_name,
-          contact_email: this.event.contact_email,
-          contact_phone: this.event.contact_phone,
-        });
       }
 
-      // 2. Fetch Registrations from Supabase
+      // 2. Fetch Registrations from Supabase and sync
       const { data: regRows } = await supabase.from('registrations').select('*');
       if (regRows && regRows.length > 0) {
-        const existingIds = new Set(this.registrations.map((r) => r.id));
         for (const row of regRows) {
-          if (!existingIds.has(row.id)) {
-            this.registrations.push(row as Registration);
+          const idx = this.registrations.findIndex((r) => r.id === row.id);
+          const mappedReg: Registration = {
+            id: row.id,
+            event_id: row.event_id,
+            full_name: row.full_name,
+            academic_year: row.academic_year,
+            food_preference: row.food_preference,
+            contact_number: row.contact_number,
+            normalized_roll_number: row.normalized_roll_number,
+            consent_agreed: row.consent_agreed ?? true,
+            payment_status: row.payment_status || 'PENDING',
+            expected_amount_minor_units: 30000,
+            currency: row.currency || 'INR',
+            performance_talent: row.performance_talent || undefined,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+          };
+          if (idx >= 0) {
+            this.registrations[idx] = { ...this.registrations[idx], ...mappedReg };
+          } else {
+            this.registrations.push(mappedReg);
           }
         }
         this.persist();
       }
 
-      // 3. Fetch Payments from Supabase
+      // 3. Fetch Payments from Supabase and sync
       const { data: payRows } = await supabase.from('payments').select('*');
       if (payRows && payRows.length > 0) {
-        const existingPayIds = new Set(this.payments.map((p) => p.id));
         for (const row of payRows) {
-          if (!existingPayIds.has(row.id)) {
-            this.payments.push(row as PaymentRecord);
+          const idx = this.payments.findIndex((p) => p.id === row.id);
+          const mappedPay: PaymentRecord = {
+            id: row.id,
+            registration_id: row.registration_id,
+            provider: row.provider || 'STATIC_UPI',
+            provider_order_id: row.provider_order_id || undefined,
+            provider_payment_id: row.provider_payment_id || undefined,
+            transaction_reference: row.transaction_reference || undefined,
+            screenshot_url: row.screenshot_url || undefined,
+            expected_amount_minor_units: 30000,
+            currency: row.currency || 'INR',
+            status: row.status || 'PENDING',
+            verification_method: row.verification_method || 'MANUAL_ADMIN',
+            verified_by: row.verified_by || undefined,
+            verified_by_name: row.verified_by_name || undefined,
+            verified_at: row.verified_at || undefined,
+            rejection_reason: row.rejection_reason || undefined,
+            admin_notes: row.admin_notes || undefined,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+          };
+          if (idx >= 0) {
+            this.payments[idx] = { ...this.payments[idx], ...mappedPay };
+          } else {
+            this.payments.push(mappedPay);
+          }
+        }
+        this.persist();
+      }
+
+      // 4. Fetch Entry Passes from Supabase
+      const { data: passRows } = await supabase.from('entry_passes').select('*');
+      if (passRows && passRows.length > 0) {
+        for (const row of passRows) {
+          const idx = this.passes.findIndex((p) => p.id === row.id);
+          const mappedPass: EntryPass = {
+            id: row.id,
+            registration_id: row.registration_id,
+            token_hash: row.token_hash,
+            status: row.status || 'VALID',
+            issued_at: row.issued_at,
+            redeemed_at: row.redeemed_at || undefined,
+            redeemed_by: row.redeemed_by || undefined,
+            revoked_at: row.revoked_at || undefined,
+            replacement_of_pass_id: row.replacement_of_pass_id || undefined,
+          };
+          if (idx >= 0) {
+            this.passes[idx] = { ...this.passes[idx], ...mappedPass };
+          } else {
+            this.passes.push(mappedPass);
+          }
+        }
+        this.persist();
+      }
+
+      // 5. Fetch Scans from Supabase
+      const { data: scanRows } = await supabase.from('entry_scans').select('*');
+      if (scanRows && scanRows.length > 0) {
+        for (const row of scanRows) {
+          if (!this.scans.find((s) => s.id === row.id)) {
+            this.scans.push({
+              id: row.id,
+              event_id: row.event_id,
+              pass_id: row.pass_id || undefined,
+              staff_user_id: row.staff_user_id,
+              staff_name: 'Staff Scanner',
+              scan_result: row.scan_result,
+              scanned_at: row.created_at || row.scanned_at || new Date().toISOString(),
+              request_id: row.request_id || undefined,
+            });
           }
         }
         this.persist();
       }
     } catch (err) {
-      console.warn('Supabase initial fetch notice:', err);
+      console.warn('Supabase initial sync notice:', err);
     }
   }
 }

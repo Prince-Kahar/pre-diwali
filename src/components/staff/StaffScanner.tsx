@@ -83,6 +83,11 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
       setIsStandalone(true);
     }
 
+    // Initialize Supabase sync for cross-device passes
+    dataService.initSupabase().then(() => {
+      loadStaffScans();
+    });
+
     return () => {
       stopCamera();
       window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
@@ -108,7 +113,15 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
   const startCamera = async () => {
     setScanResult(null);
     try {
-      if (!scannerRef.current) {
+      if (scannerRef.current) {
+        try {
+          if (scannerRef.current.isScanning) {
+            await scannerRef.current.stop();
+          }
+        } catch {
+          // ignore
+        }
+      } else {
         scannerRef.current = new Html5Qrcode('qr-reader-container');
       }
 
@@ -116,7 +129,11 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
         { facingMode: 'environment' },
         {
           fps: 10,
-          qrbox: { width: 250, height: 250 },
+          qrbox: (viewfinderWidth, viewfinderHeight) => {
+            const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+            const qrboxSize = Math.max(180, Math.floor(minEdge * 0.72));
+            return { width: qrboxSize, height: qrboxSize };
+          },
         },
         async (decodedText) => {
           if (cooldownRef.current || isProcessing) return;

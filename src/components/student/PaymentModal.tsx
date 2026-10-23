@@ -38,8 +38,12 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   const [copiedUpi, setCopiedUpi] = useState(false);
   const [existingPayment, setExistingPayment] = useState<PaymentRecord | undefined>();
 
-  // Authoritative amount from registration snapshot
-  const amountRupees = (registration.expected_amount_minor_units / 100).toFixed(2);
+  // Authoritative amount - ensure ₹300 is displayed and used in UPI intent
+  const feeMinor =
+    registration.expected_amount_minor_units === 25000 || !registration.expected_amount_minor_units
+      ? (event.registration_fee_minor_units || 30000)
+      : registration.expected_amount_minor_units;
+  const amountRupees = (feeMinor / 100).toFixed(2);
   const upiIntent = `upi://pay?pa=${encodeURIComponent(event.payment_upi_id)}&pn=${encodeURIComponent(
     event.payment_upi_name
   )}&am=${amountRupees}&cu=${registration.currency || 'INR'}&tn=${encodeURIComponent(
@@ -99,8 +103,24 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
 
   const handleManualClaimSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!transactionRef.trim()) {
+    const cleanRef = transactionRef.trim();
+    if (!cleanRef) {
       setErrorMsg('Please enter your 12-digit UPI Reference / UTR Number');
+      return;
+    }
+
+    if (cleanRef.length > 12) {
+      setErrorMsg('UPI Reference / UTR Number cannot exceed 12 digits');
+      return;
+    }
+
+    if (cleanRef.length < 8) {
+      setErrorMsg('UPI Reference / UTR Number must be at least 8 digits (standard UPI reference is 12 digits)');
+      return;
+    }
+
+    if (!/^[a-zA-Z0-9]{8,12}$/.test(cleanRef)) {
+      setErrorMsg('UPI Reference / UTR must be 8 to 12 alphanumeric characters / digits');
       return;
     }
 
@@ -123,7 +143,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
 
       const updatedPayment = await dataService.submitManualPaymentClaim(
         registration.id,
-        transactionRef.trim(),
+        cleanRef,
         finalScreenshotUrl
       );
       setExistingPayment(updatedPayment);
@@ -158,7 +178,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
           <div>
             <span className="text-xs text-[#6B655D] font-medium block">Registration Fee</span>
             <span className="text-xl sm:text-2xl font-black text-[#6D28D9]">
-              {formatINR(registration.expected_amount_minor_units, registration.currency)}
+              {formatINR(feeMinor, registration.currency)}
             </span>
           </div>
           <div className="text-right text-xs text-[#29243A]">
@@ -260,16 +280,31 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                     <label className="text-xs font-bold text-[#29243A] block">
                       Enter UPI Reference / UTR / Transaction ID <span className="text-[#E99A20]">*</span>
                     </label>
-                    <input
-                      type="text"
-                      placeholder="e.g. 12-digit UTR (123456789012)"
-                      value={transactionRef}
-                      onChange={(e) => setTransactionRef(e.target.value)}
-                      className="w-full px-4 py-3 rounded-xl bg-[#FFFCF5] border border-[#E8E2D9] text-[#29243A] placeholder-[#6B655D]/60 focus:outline-none focus:border-[#6D28D9] focus:ring-1 focus:ring-[#6D28D9] text-sm font-mono font-medium"
-                    />
-                    <p className="text-[11px] text-[#6B655D]">
-                      You can find this 12-digit number in your UPI app payment receipt.
-                    </p>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        maxLength={12}
+                        placeholder="e.g. 12-digit UTR (123456789012)"
+                        value={transactionRef}
+                        onChange={(e) => {
+                          const val = e.target.value.replace(/[^a-zA-Z0-9]/g, '').slice(0, 12);
+                          setTransactionRef(val);
+                          if (errorMsg) setErrorMsg(null);
+                        }}
+                        className="w-full px-4 py-3 rounded-xl bg-[#FFFCF5] border border-[#E8E2D9] text-[#29243A] placeholder-[#6B655D]/60 focus:outline-none focus:border-[#6D28D9] focus:ring-1 focus:ring-[#6D28D9] text-sm font-mono font-medium pr-16"
+                      />
+                      <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-mono font-bold text-[#6B655D]">
+                        {transactionRef.length}/12
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center text-[11px] text-[#6B655D]">
+                      <span>Enter the 12-digit number from your UPI app receipt (Max 12 digits).</span>
+                      {transactionRef.length === 12 ? (
+                        <span className="text-[#15803D] font-bold">12 digits entered</span>
+                      ) : transactionRef.length > 0 ? (
+                        <span className="text-[#B45309] font-medium">{12 - transactionRef.length} digits left</span>
+                      ) : null}
+                    </div>
                   </div>
 
                   {/* COMPULSORY Payment Screenshot Upload */}

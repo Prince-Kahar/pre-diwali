@@ -113,9 +113,11 @@ describe('Pre-Diwali Celebration Core Logic & Security Tests', () => {
       ).toBe(true);
     });
 
-    it('validates manual UPI transaction ID format', () => {
-      expect(manualPaymentClaimSchema.safeParse({ transaction_reference: 'UPI1234567890' }).success).toBe(true);
-      expect(manualPaymentClaimSchema.safeParse({ transaction_reference: '123' }).success).toBe(false); // too short
+    it('validates manual UPI transaction ID format (max 12 digits)', () => {
+      expect(manualPaymentClaimSchema.safeParse({ transaction_reference: '123456789012' }).success).toBe(true); // exact 12 digits
+      expect(manualPaymentClaimSchema.safeParse({ transaction_reference: 'UPI12345678' }).success).toBe(true); // 11 chars
+      expect(manualPaymentClaimSchema.safeParse({ transaction_reference: '1234567890123' }).success).toBe(false); // > 12 digits rejected
+      expect(manualPaymentClaimSchema.safeParse({ transaction_reference: '123' }).success).toBe(false); // too short (<8)
       expect(manualPaymentClaimSchema.safeParse({ transaction_reference: 'UPI@#$123' }).success).toBe(false); // special chars
     });
   });
@@ -203,7 +205,7 @@ describe('Pre-Diwali Celebration Core Logic & Security Tests', () => {
         consent_agreed: true,
       });
 
-      const txRef = `UPI${Date.now()}${Math.random().toString(36).substring(2, 5).toUpperCase()}REF`;
+      const txRef = `12${Math.floor(1000000000 + Math.random() * 9000000000)}`;
       const screenshotUrl = 'https://example.com/receipts/kavita-upi.png';
       const payment = await dataService.submitManualPaymentClaim(regRes.registration.id, txRef, screenshotUrl);
       expect(payment.status).toBe('PENDING');
@@ -237,7 +239,7 @@ describe('Pre-Diwali Celebration Core Logic & Security Tests', () => {
       // Confirm payment
       const payment = await dataService.submitManualPaymentClaim(
         regRes.registration.id,
-        `UPI${Date.now()}${Math.random().toString(36).substring(2, 5).toUpperCase()}SCAN`
+        `22${Math.floor(1000000000 + Math.random() * 9000000000)}`
       );
       const adminProfile = dataService.getProfiles().find((p) => p.role === 'ADMIN')!;
       await dataService.verifyManualPaymentAdmin(payment.id, adminProfile.id);
@@ -289,7 +291,7 @@ describe('Pre-Diwali Celebration Core Logic & Security Tests', () => {
 
       const payment = await dataService.submitManualPaymentClaim(
         regRes.registration.id,
-        `UPI${Date.now()}${Math.random().toString(36).substring(2, 5).toUpperCase()}CONC`
+        `32${Math.floor(1000000000 + Math.random() * 9000000000)}`
       );
       const admin = dataService.getProfiles().find((p) => p.role === 'ADMIN')!;
       await dataService.verifyManualPaymentAdmin(payment.id, admin.id);
@@ -386,7 +388,7 @@ describe('Pre-Diwali Celebration Core Logic & Security Tests', () => {
       expect(fetchedOldReg.expected_amount_minor_units).not.toBe(newFee);
 
       // 4. Verify that payment creation for old registration uses its stored snapshot
-      const txRef = `UPISNAPSHOT${Date.now()}`;
+      const txRef = `42${Math.floor(1000000000 + Math.random() * 9000000000)}`;
       const paymentOld = await dataService.submitManualPaymentClaim(fetchedOldReg.id, txRef);
       expect(paymentOld.expected_amount_minor_units).toBe(initialFee);
     });
@@ -489,7 +491,7 @@ describe('Pre-Diwali Celebration Core Logic & Security Tests', () => {
         consent_agreed: true,
       });
 
-      const tx = `UPI${Date.now()}${Math.random().toString(36).substring(2, 5).toUpperCase()}SS`;
+      const tx = `${Math.floor(100000000000 + Math.random() * 900000000000)}`;
       const screenshotDataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 
       const payment = await dataService.submitManualPaymentClaim(reg.registration.id, tx, screenshotDataUrl);

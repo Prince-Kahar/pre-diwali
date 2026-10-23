@@ -131,6 +131,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [pricingSuccessMsg, setPricingSuccessMsg] = useState<string | null>(null);
   const [pricingErrorMsg, setPricingErrorMsg] = useState<string | null>(null);
 
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
   const refreshAll = () => {
     setMetrics(dataService.getDashboardMetrics());
     setRegistrations(dataService.getAllRegistrations());
@@ -141,8 +143,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setScansList(dataService.getScansList());
   };
 
+  const syncAndRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await dataService.initSupabase();
+    } catch {
+      // safe fallback
+    } finally {
+      refreshAll();
+      setIsRefreshing(false);
+    }
+  };
+
   useEffect(() => {
     refreshAll();
+    syncAndRefresh();
   }, []);
 
   // Synchronize pricing form when event prop changes
@@ -202,10 +217,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   // Reject Payment Handler
-  const handleConfirmRejectPayment = () => {
+  const handleConfirmRejectPayment = async () => {
     if (!rejectModalPayment) return;
     try {
-      dataService.rejectManualPaymentAdmin(
+      await dataService.rejectManualPaymentAdmin(
         rejectModalPayment.id,
         adminUser.id,
         rejectReason || 'Transaction reference not found in bank statement'
@@ -408,8 +423,76 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   return (
     <div className="flex flex-col lg:flex-row gap-6 min-h-[82vh] bg-[#FFFCF5]">
-      {/* ----------------- LIGHT SIDEBAR ----------------- */}
-      <aside className="w-full lg:w-64 bg-white border border-[#E8E2D9] rounded-3xl p-5 shadow-xs flex flex-col justify-between shrink-0">
+      {/* ----------------- MOBILE NAVIGATION BAR (< lg) ----------------- */}
+      <div className="lg:hidden bg-white border border-[#E8E2D9] rounded-3xl p-4 shadow-xs space-y-3">
+        <div className="flex items-center justify-between pb-2 border-b border-[#E8E2D9]">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-[#FFF0D9] text-[#6D28D9] border border-[#E8E2D9] flex items-center justify-center font-bold">
+              <Shield className="w-4 h-4 text-[#E99A20]" />
+            </div>
+            <div>
+              <span className="text-[10px] uppercase font-bold text-[#E99A20] block">College Admin</span>
+              <h2 className="text-xs font-bold text-[#29243A]">{adminUser.display_name}</h2>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={syncAndRefresh}
+              className="p-2 rounded-xl bg-[#FFF0D9] hover:bg-[#FFE6C2] text-[#6D28D9] border border-[#E8E2D9] text-xs font-bold transition-all cursor-pointer flex items-center gap-1"
+              title="Sync with Supabase"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-[#E99A20] ${isRefreshing ? 'animate-spin' : ''}`} />
+              <span className="text-[11px]">Sync</span>
+            </button>
+            <button
+              type="button"
+              onClick={onLogout}
+              className="p-2 rounded-xl bg-white hover:bg-rose-50 text-[#6B655D] hover:text-[#B91C1C] border border-[#E8E2D9] text-xs transition-colors cursor-pointer"
+              title="Sign Out"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Horizontal scrollable tab buttons on mobile */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+          {[
+            { id: 'OVERVIEW', label: 'Overview', icon: Layers },
+            { id: 'REGISTRATIONS', label: `Registrations (${registrations.length})`, icon: Users },
+            { id: 'PAYMENTS', label: `Payments (${pendingPayments.length})`, icon: CreditCard },
+            { id: 'PASSES', label: `Passes (${metrics.validPassesIssued})`, icon: QrCode },
+            { id: 'STAFF', label: `Staff (${staffList.length})`, icon: UserPlus },
+            { id: 'SCANNER_ACTIVITY', label: `Activity (${scansList.length})`, icon: Activity },
+            { id: 'REPORTS', label: 'Food Reports', icon: Utensils },
+            { id: 'PRICING', label: 'Pricing', icon: IndianRupee },
+            { id: 'SETTINGS', label: 'Settings', icon: Settings },
+            { id: 'AUDIT', label: 'Audit', icon: History },
+          ].map((tab) => {
+            const Icon = tab.icon;
+            const isCurrent = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id as AdminTab)}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer shrink-0 ${
+                  isCurrent
+                    ? 'bg-[#6D28D9] text-white shadow-xs'
+                    : 'bg-[#FFF0D9] text-[#29243A] hover:bg-[#FFE6C2]'
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5" />
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ----------------- DESKTOP SIDEBAR (lg:flex) ----------------- */}
+      <aside className="hidden lg:flex w-64 bg-white border border-[#E8E2D9] rounded-3xl p-5 shadow-xs flex-col justify-between shrink-0">
         <div className="space-y-6">
           {/* Admin Header Badge */}
           <div className="flex items-center gap-3 pb-5 border-b border-[#E8E2D9]">
@@ -598,11 +681,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         <div className="pt-4 border-t border-[#E8E2D9] space-y-2">
           <button
             type="button"
-            onClick={refreshAll}
+            onClick={syncAndRefresh}
             className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-[#FFFCF5] hover:bg-[#FFF0D9] text-[#29243A] text-xs font-semibold border border-[#E8E2D9] transition-colors cursor-pointer"
           >
-            <RefreshCw className="w-3.5 h-3.5 text-[#E99A20]" />
-            <span>Refresh Workspace</span>
+            <RefreshCw className={`w-3.5 h-3.5 text-[#E99A20] ${isRefreshing ? 'animate-spin' : ''}`} />
+            <span>Sync with Supabase</span>
           </button>
           <button
             type="button"
