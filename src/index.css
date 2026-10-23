@@ -1,0 +1,127 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --bg-ivory: #FFFCF5;
+    --bg-cream: #FFF0D9;
+    --primary: #6D28D9;
+    --primary-hover: #5B21B6;
+    --accent-saffron: #E99A20;
+    --text-charcoal: #29243A;
+    --text-secondary: #6B655D;
+    --card-bg: #FFFFFF;
+    --border-light: #E8E2D9;
+    --color-success: #15803D;
+    --color-error: #B91C1C;
+    --color-warning: #B45309;
+  }
+
+  body {
+    background-color: #FFFCF5;
+    color: #29243A;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    margin: 0;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+
+  /* Custom light mode selection */
+  ::selection {
+    background-color: #E99A20;
+    color: #FFFFFF;
+  }
+}
+
+/* Custom Festive Light Gradients & Accents */
+.bg-ivory {
+  background-color: #FFFCF5;
+}
+
+.bg-cream {
+  background-color: #FFF0D9;
+}
+
+.bg-card-white {
+  background-color: #FFFFFF;
+}
+
+.border-light-soft {
+  border-color: #E8E2D9;
+}
+
+.text-charcoal-plum {
+  color: #29243A;
+}
+
+.text-muted-warm {
+  color: #6B655D;
+}
+
+.bg-royal-purple {
+  background-color: #6D28D9;
+}
+
+.bg-royal-purple:hover {
+  background-color: #5B21B6;
+}
+
+.text-saffron-gold {
+  color: #E99A20;
+}
+
+/* Subtle festive light gradient for hero */
+.bg-festive-hero-light {
+  background: radial-gradient(circle at 50% 0%, #FFF0D9 0%, #FFF7EC 50%, #FFFCF5 100%);
+}
+
+.bg-festive-cream-card {
+  background: linear-gradient(135deg, #FFFFFF 0%, #FFFBF5 100%);
+}
+
+.saffron-gradient-text {
+  background: linear-gradient(135deg, #6D28D9 0%, #9333EA 50%, #E99A20 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.gold-gradient-text {
+  background: linear-gradient(135deg, #B45309 0%, #D97706 40%, #E99A20 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.royal-gradient-text {
+  background: linear-gradient(135deg, #4C1D95 0%, #6D28D9 50%, #7C3AED 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.shimmer-saffron {
+  background: linear-gradient(90deg, rgba(233, 154, 32, 0.05) 0%, rgba(233, 154, 32, 0.2) 50%, rgba(233, 154, 32, 0.05) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 2.5s infinite;
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@keyframes diya-flicker {
+  0%, 100% { opacity: 0.92; transform: scale(1); filter: drop-shadow(0 0 6px rgba(233, 154, 32, 0.5)); }
+  50% { opacity: 1; transform: scale(1.06); filter: drop-shadow(0 0 12px rgba(233, 154, 32, 0.8)); }
+}
+
+.animate-diya {
+  animation: diya-flicker 2s ease-in-out infinite;
+}
+
+/* Light Mode Card Shadows */
+.festive-shadow {
+  box-shadow: 0 4px 20px -2px rgba(109, 40, 217, 0.06), 0 2px 6px -1px rgba(233, 154, 32, 0.08);
+}
+
+.festive-shadow-lg {
+  box-shadow: 0 10px 30px -4px rgba(109, 40, 217, 0.08), 0 4px 12px -2px rgba(233, 154, 32, 0.1);
+}

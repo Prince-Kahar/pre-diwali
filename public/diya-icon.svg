@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6D28D9" />
+      <stop offset="100%" stop-color="#4C1D95" />
+    </linearGradient>
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FDE047" />
+      <stop offset="50%" stop-color="#E99A20" />
+      <stop offset="100%" stop-color="#D97706" />
+    </linearGradient>
+    <linearGradient id="flameGrad" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#DC2626" />
+      <stop offset="40%" stop-color="#EA580C" />
+      <stop offset="70%" stop-color="#FBBF24" />
+      <stop offset="100%" stop-color="#FEF08A" />
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="12" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Background rounded card -->
+  <rect width="512" height="512" rx="128" fill="url(#bgGrad)" />
+
+  <!-- Outer QR Scanner Reticle Brackets -->
+  <g stroke="#E99A20" stroke-width="14" stroke-linecap="round" fill="none">
+    <!-- Top-Left Bracket -->
+    <path d="M 96 170 L 96 112 A 16 16 0 0 1 112 96 L 170 96" />
+    <!-- Top-Right Bracket -->
+    <path d="M 342 96 L 400 96 A 16 16 0 0 1 416 112 L 416 170" />
+    <!-- Bottom-Left Bracket -->
+    <path d="M 96 342 L 96 400 A 16 16 0 0 0 112 416 L 170 416" />
+    <!-- Bottom-Right Bracket -->
+    <path d="M 342 416 L 400 416 A 16 16 0 0 0 416 400 L 416 342" />
+  </g>
+
+  <!-- Laser Scan Line -->
+  <line x1="80" y1="256" x2="432" y2="256" stroke="#FDE047" stroke-width="4" stroke-dasharray="12 8" opacity="0.8" />
+
+  <!-- Glowing Diya Base -->
+  <g filter="url(#glow)">
+    <!-- Flame Aura -->
+    <circle cx="256" cy="200" r="48" fill="#FDE047" opacity="0.35" />
+    
+    <!-- Flame Shape -->
+    <path d="M 256 128 C 280 180 286 216 256 242 C 226 216 232 180 256 128 Z" fill="url(#flameGrad)" />
+
+    <!-- Diya Clay / Brass Bowl -->
+    <path d="M 160 256 C 160 324 352 324 352 256 L 368 250 C 374 248 370 240 362 240 L 150 240 C 142 240 138 248 144 250 Z" fill="url(#goldGrad)" />
+    
+    <!-- Diya Stem/Pedestal Base -->
+    <path d="M 216 310 C 216 336 296 336 296 310 Z" fill="#D97706" />
+    <ellipse cx="256" cy="336" rx="56" ry="12" fill="url(#goldGrad)" />
+  </g>
+
+  <!-- Decorative Sparkles -->
+  <path d="M 144 140 Q 144 156 132 156 Q 144 156 144 172 Q 144 156 156 156 Q 144 156 144 140 Z" fill="#FEF08A" />
+  <path d="M 370 140 Q 370 156 358 156 Q 370 156 370 172 Q 370 156 382 156 Q 370 156 370 140 Z" fill="#FEF08A" />
+</svg>

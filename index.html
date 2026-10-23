@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/diya-icon.svg" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    
+    <!-- PWA & Mobile Web App Meta Tags -->
+    <meta name="theme-color" content="#6D28D9" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Staff Scanner" />
+    <link rel="apple-touch-icon" href="/diya-icon.svg" />
+    
+    <title>Sascma College Pre-Diwali Celebration — Registration & QR Pass</title>
+  </head>
+  <body class="bg-[#FFFCF5] text-[#29243A]">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+    <script>
+      // Register Progressive Web App Service Worker for offline gate scanning
+      if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js')
+            .then((registration) => {
+              console.log('PWA Service Worker registered with scope:', registration.scope);
+            })
+            .catch((error) => {
+              console.warn('PWA Service Worker registration failed:', error);
+            });
+        });
+      }
+    </script>
+  </body>
+</html>
