@@ -27,6 +27,7 @@ import {
 import { EventSettings, UserProfile, ScanVerificationResult, EntryScanLog } from '../../types';
 import { dataService } from '../../services/dataService';
 import { formatKolkataDateTime } from '../../lib/crypto';
+import collegeLogo from '../../assets/logo.png';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -238,8 +239,12 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
       {/* Staff Header */}
       <div className="flex items-center justify-between p-4 rounded-3xl bg-white border border-[#E8E2D9] shadow-xs">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-[#FFF0D9] text-[#6D28D9] border border-[#E8E2D9] flex items-center justify-center font-bold">
-            <ShieldCheck className="w-5 h-5 text-[#E99A20]" />
+          <div className="w-11 h-11 rounded-2xl bg-white border border-[#E8E2D9] p-1 flex items-center justify-center shadow-xs shrink-0">
+            <img
+              src={collegeLogo}
+              alt={`${event.college_name} Logo`}
+              className="w-full h-full object-contain"
+            />
           </div>
           <div>
             <div className="flex items-center gap-2 flex-wrap">

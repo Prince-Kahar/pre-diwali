@@ -17,6 +17,7 @@ import { EventSettings, AcademicYear, FoodPreference, Registration } from '../..
 import { registrationSchema } from '../../lib/validation';
 import { formatINR } from '../../lib/crypto';
 import { dataService } from '../../services/dataService';
+import collegeLogo from '../../assets/logo.png';
 
 interface RegistrationFormProps {
   event: EventSettings;
@@ -159,13 +160,25 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
           </div>
         </div>
 
-        <div className="space-y-1 mb-8">
-          <h2 className="text-2xl sm:text-3xl font-black text-[#29243A] tracking-tight">
-            Student Registration Form
-          </h2>
-          <p className="text-xs sm:text-sm text-[#6B655D]">
-            Please enter your accurate college credentials. The entry QR pass and food preference will be permanently linked to this roll number.
-          </p>
+        <div className="flex items-center gap-4 mb-8">
+          <div className="w-14 h-14 rounded-2xl bg-white border border-[#E8E2D9] p-1.5 shadow-xs flex items-center justify-center shrink-0">
+            <img
+              src={collegeLogo}
+              alt={`${event.college_name} Logo`}
+              className="w-full h-full object-contain"
+            />
+          </div>
+          <div className="space-y-0.5">
+            <span className="text-[11px] uppercase tracking-wider text-[#6B655D] font-bold block">
+              {event.college_name}
+            </span>
+            <h2 className="text-xl sm:text-2xl font-black text-[#29243A] tracking-tight">
+              Student Registration Form
+            </h2>
+            <p className="text-xs text-[#6B655D]">
+              Please enter your accurate college credentials. The entry QR pass and food preference will be permanently linked to this roll number.
+            </p>
+          </div>
         </div>
 
         {generalError && (

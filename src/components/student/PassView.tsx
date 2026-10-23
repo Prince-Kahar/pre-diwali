@@ -23,6 +23,7 @@ import {
 import { EventSettings, Registration, EntryPass } from '../../types';
 import { DiyaIcon, RangoliMotif } from '../common/DiyaDecoration';
 import { formatINR, formatKolkataDateTime, maskContactNumber } from '../../lib/crypto';
+import collegeLogo from '../../assets/logo.png';
 
 interface PassViewProps {
   event: EventSettings;
@@ -175,8 +176,12 @@ export const PassView: React.FC<PassViewProps> = ({
         {/* Card Header */}
         <div className="flex flex-col sm:flex-row items-center justify-between pb-6 border-b border-[#E8E2D9] gap-4 text-center sm:text-left">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-2xl bg-[#FFF0D9] border border-[#E99A20]/40">
-              <DiyaIcon size="md" />
+            <div className="p-1 rounded-2xl bg-white border border-[#E8E2D9] shadow-xs flex items-center justify-center">
+              <img
+                src={collegeLogo}
+                alt={`${event.college_name} Logo`}
+                className="w-12 h-12 object-contain"
+              />
             </div>
             <div>
               <span className="text-[11px] uppercase tracking-widest font-bold text-[#6B655D]">

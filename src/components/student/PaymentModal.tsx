@@ -15,6 +15,7 @@ import {
 import { EventSettings, Registration, PaymentRecord } from '../../types';
 import { formatINR } from '../../lib/crypto';
 import { dataService } from '../../services/dataService';
+import collegeLogo from '../../assets/logo.png';
 
 interface PaymentModalProps {
   event: EventSettings;
@@ -159,8 +160,17 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
       <div className="bg-white border border-[#E8E2D9] rounded-3xl p-6 sm:p-8 max-w-xl w-full shadow-2xl relative my-8">
         {/* Header */}
         <div className="text-center space-y-1 mb-6">
-          <span className="text-[11px] uppercase tracking-widest text-[#E99A20] font-bold">
-            Secure Payment Portal
+          <div className="flex justify-center mb-2">
+            <div className="w-14 h-14 rounded-2xl bg-white border border-[#E8E2D9] p-1.5 shadow-xs flex items-center justify-center">
+              <img
+                src={collegeLogo}
+                alt={`${event.college_name} Logo`}
+                className="w-full h-full object-contain"
+              />
+            </div>
+          </div>
+          <span className="text-[11px] uppercase tracking-widest text-[#E99A20] font-bold block">
+            {event.college_name} • Secure Payment Portal
           </span>
           <h2 className="text-2xl font-black text-[#29243A]">
             Pre-Diwali Registration Payment

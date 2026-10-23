@@ -13,6 +13,7 @@ import {
 import { EventSettings } from '../../types';
 import { DiyaIcon, RangoliMotif } from '../common/DiyaDecoration';
 import { formatINR } from '../../lib/crypto';
+import collegeLogo from '../../assets/logo.png';
 
 interface LandingPageProps {
   event: EventSettings;
@@ -51,13 +52,22 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         <div className="absolute -bottom-24 -right-24 w-96 h-96 bg-[#6D28D9]/10 rounded-full blur-3xl pointer-events-none" />
 
         <div className="relative z-10 max-w-3xl mx-auto space-y-6">
-          {/* Top Diya Badge */}
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white border border-[#E8E2D9] text-[#29243A] text-xs sm:text-sm font-semibold shadow-xs">
-            <DiyaIcon size="sm" />
-            <span className="text-[#6D28D9]">Pre-Diwali Registration</span>
-            <span className="text-[#6B655D]">•</span>
-            <span className="text-[#E99A20]">{event.college_name}</span>
-            <Sparkles className="w-3.5 h-3.5 text-[#E99A20]" />
+          {/* College Logo & Top Badge */}
+          <div className="flex flex-col items-center gap-3">
+            <div className="p-2 bg-white rounded-2xl border border-[#E8E2D9] shadow-sm inline-block">
+              <img
+                src={collegeLogo}
+                alt={`${event.college_name} Logo`}
+                className="w-16 h-16 sm:w-20 sm:h-20 object-contain"
+              />
+            </div>
+            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white border border-[#E8E2D9] text-[#29243A] text-xs sm:text-sm font-semibold shadow-xs">
+              <DiyaIcon size="sm" />
+              <span className="text-[#6D28D9]">Pre-Diwali Celebration 2026</span>
+              <span className="text-[#6B655D]">•</span>
+              <span className="text-[#E99A20] font-bold">{event.college_name}</span>
+              <Sparkles className="w-3.5 h-3.5 text-[#E99A20]" />
+            </div>
           </div>
 
           {/* Headline */}

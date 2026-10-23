@@ -2,6 +2,7 @@ import React from 'react';
 import { Sparkles, QrCode, Shield, GraduationCap, CheckCircle2 } from 'lucide-react';
 import { DiyaIcon } from './DiyaDecoration';
 import { EventSettings } from '../../types';
+import collegeLogo from '../../assets/logo.png';
 
 export type ActivePortal = 'STUDENT' | 'ADMIN' | 'STAFF';
 
@@ -29,8 +30,12 @@ export const Navbar: React.FC<NavbarProps> = ({
             onClick={() => onSelectPortal('STUDENT')}
             className="flex items-center gap-3 cursor-pointer group"
           >
-            <div className="relative p-2 rounded-xl bg-[#FFF0D9] border border-[#E99A20]/40 shadow-xs group-hover:border-[#E99A20] transition-colors">
-              <DiyaIcon size="md" />
+            <div className="relative p-1 rounded-xl bg-white border border-[#E8E2D9] shadow-xs group-hover:border-[#E99A20] transition-colors shrink-0">
+              <img
+                src={collegeLogo}
+                alt={`${event.college_name} Logo`}
+                className="w-10 h-10 object-contain rounded-lg"
+              />
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2">

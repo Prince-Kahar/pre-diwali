@@ -43,6 +43,7 @@ import {
 } from '../../types';
 import { dataService } from '../../services/dataService';
 import { formatINR, formatKolkataDateTime, maskContactNumber } from '../../lib/crypto';
+import collegeLogo from '../../assets/logo.png';
 
 interface AdminDashboardProps {
   adminUser: UserProfile;
@@ -427,11 +428,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       <div className="lg:hidden bg-white border border-[#E8E2D9] rounded-3xl p-4 shadow-xs space-y-3">
         <div className="flex items-center justify-between pb-2 border-b border-[#E8E2D9]">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-[#FFF0D9] text-[#6D28D9] border border-[#E8E2D9] flex items-center justify-center font-bold">
-              <Shield className="w-4 h-4 text-[#E99A20]" />
+            <div className="w-8 h-8 rounded-xl bg-white border border-[#E8E2D9] p-0.5 shadow-xs flex items-center justify-center shrink-0">
+              <img
+                src={collegeLogo}
+                alt="College Logo"
+                className="w-full h-full object-contain"
+              />
             </div>
             <div>
-              <span className="text-[10px] uppercase font-bold text-[#E99A20] block">College Admin</span>
+              <span className="text-[10px] uppercase font-bold text-[#E99A20] block">{event.college_name || 'College Admin'}</span>
               <h2 className="text-xs font-bold text-[#29243A]">{adminUser.display_name}</h2>
             </div>
           </div>
@@ -496,12 +501,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         <div className="space-y-6">
           {/* Admin Header Badge */}
           <div className="flex items-center gap-3 pb-5 border-b border-[#E8E2D9]">
-            <div className="w-10 h-10 rounded-2xl bg-[#FFF0D9] text-[#6D28D9] border border-[#E8E2D9] flex items-center justify-center font-bold">
-              <Shield className="w-5 h-5 text-[#E99A20]" />
+            <div className="w-11 h-11 rounded-2xl bg-white border border-[#E8E2D9] p-1 shadow-xs flex items-center justify-center shrink-0">
+              <img
+                src={collegeLogo}
+                alt="College Logo"
+                className="w-full h-full object-contain"
+              />
             </div>
             <div>
               <span className="text-[10px] uppercase tracking-wider font-bold text-[#E99A20] block">
-                College Admin
+                {event.college_name || 'College Admin'}
               </span>
               <h2 className="text-sm font-bold text-[#29243A] line-clamp-1">
                 {adminUser.display_name}
