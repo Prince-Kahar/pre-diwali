@@ -10,20 +10,35 @@ interface StaffLoginProps {
 
 export const StaffLogin: React.FC<StaffLoginProps> = ({ event, onLoginSuccess }) => {
   const staffProfiles = dataService.getProfiles().filter((p) => p.role === 'STAFF' && p.is_active);
-  const [selectedStaffId, setSelectedStaffId] = useState(staffProfiles[0]?.id || '');
-  const [accessCode, setAccessCode] = useState('');
+  const [username, setUsername] = useState('staff');
+  const [password, setPassword] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    const staff = staffProfiles.find((p) => p.id === selectedStaffId);
+    const cleanUser = username.trim().toLowerCase();
+    const staff = staffProfiles.find(
+      (p) => p.email.toLowerCase() === cleanUser || cleanUser === 'staff' || cleanUser === 'staff@sascma.edu'
+    ) || staffProfiles[0];
+
     if (!staff) {
-      setErrorMsg('Please select a valid staff account');
+      setErrorMsg('Staff member account not found (use: staff)');
       return;
     }
 
     if (!staff.is_active) {
       setErrorMsg('This staff account has been deactivated by administration');
+      return;
+    }
+
+    const cleanPass = password.trim();
+    if (!cleanPass) {
+      setErrorMsg('Please enter staff password');
+      return;
+    }
+
+    if (cleanPass !== 'staff123' && cleanPass !== 'staff' && cleanPass !== '1234' && cleanPass !== 'Staff@2026') {
+      setErrorMsg('Invalid password. Please enter the correct password (staff123)');
       return;
     }
 
@@ -42,7 +57,7 @@ export const StaffLogin: React.FC<StaffLoginProps> = ({ event, onLoginSuccess })
           </span>
           <h2 className="text-2xl font-black text-[#29243A]">Staff QR Entry Portal</h2>
           <p className="text-xs text-[#6B655D]">
-            Sign in to access the camera scanner and validate student entry passes for {event.name}.
+            Sign in as <span className="font-bold text-[#6D28D9]">Staff Scanner</span> to access the camera scanner and validate student entry passes for {event.name}.
           </p>
         </div>
 
@@ -56,34 +71,33 @@ export const StaffLogin: React.FC<StaffLoginProps> = ({ event, onLoginSuccess })
         <form onSubmit={handleLogin} className="space-y-4">
           <div className="space-y-1.5">
             <label className="text-xs font-bold text-[#29243A] block">
-              Select Staff Member / Gate Assignment
+              Staff Username
             </label>
-            <select
-              value={selectedStaffId}
+            <input
+              type="text"
+              placeholder="e.g. staff"
+              value={username}
               onChange={(e) => {
-                setSelectedStaffId(e.target.value);
+                setUsername(e.target.value);
                 setErrorMsg('');
               }}
-              className="w-full px-4 py-3 rounded-xl bg-[#FFFCF5] border border-[#E8E2D9] text-[#29243A] text-sm focus:outline-none focus:border-[#6D28D9] focus:ring-1 focus:ring-[#6D28D9] font-medium cursor-pointer"
-            >
-              {staffProfiles.map((staff) => (
-                <option key={staff.id} value={staff.id}>
-                  {staff.display_name} ({staff.email})
-                </option>
-              ))}
-            </select>
+              className="w-full px-4 py-3 rounded-xl bg-[#FFFCF5] border border-[#E8E2D9] text-[#29243A] text-sm focus:outline-none focus:border-[#6D28D9] focus:ring-1 focus:ring-[#6D28D9] font-medium"
+            />
           </div>
 
           <div className="space-y-1.5">
             <label className="text-xs font-bold text-[#29243A] block">
-              Gate Access Pin / Password
+              Staff Password
             </label>
             <input
               type="password"
-              placeholder="Enter gate PIN (Default: 1234 or leave blank for demo)"
-              value={accessCode}
-              onChange={(e) => setAccessCode(e.target.value)}
-              className="w-full px-4 py-3 rounded-xl bg-[#FFFCF5] border border-[#E8E2D9] text-[#29243A] placeholder-[#6B655D]/60 text-sm focus:outline-none focus:border-[#6D28D9] focus:ring-1 focus:ring-[#6D28D9] font-mono font-medium"
+              placeholder="Enter password (staff123)"
+              value={password}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                setErrorMsg('');
+              }}
+              className="w-full px-4 py-3 rounded-xl bg-[#FFFCF5] border border-[#E8E2D9] text-[#29243A] placeholder-[#6B655D]/60 text-sm focus:outline-none focus:border-[#6D28D9] focus:ring-1 focus:ring-[#6D28D9] font-medium"
             />
           </div>
 
@@ -98,8 +112,9 @@ export const StaffLogin: React.FC<StaffLoginProps> = ({ event, onLoginSuccess })
           </div>
         </form>
 
-        <div className="pt-4 border-t border-[#E8E2D9] text-center text-[11px] text-[#6B655D]">
-          Strict security logging: Every scan result is cryptographically tied to the active staff profile ID.
+        <div className="p-3.5 rounded-xl bg-[#FFF0D9] border border-[#E8E2D9] text-xs text-[#29243A] text-center space-y-0.5">
+          <span className="block text-[11px] font-bold text-[#6B655D] uppercase tracking-wider">Default Staff Credentials</span>
+          <p>Username: <span className="text-[#6D28D9] font-mono font-bold">staff</span> | Password: <span className="text-[#6D28D9] font-mono font-bold">staff123</span></p>
         </div>
       </div>
     </div>

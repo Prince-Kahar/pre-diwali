@@ -9,20 +9,36 @@ interface AdminLoginProps {
 
 export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess }) => {
   const adminProfiles = dataService.getProfiles().filter((p) => p.role === 'ADMIN');
-  const [email, setEmail] = useState(adminProfiles[0]?.email || 'admin@college.edu');
+  const [username, setUsername] = useState('admin');
   const [password, setPassword] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    const admin = adminProfiles.find((p) => p.email.toLowerCase() === email.toLowerCase());
+    const cleanUser = username.trim().toLowerCase();
+    const admin = adminProfiles.find(
+      (p) => p.email.toLowerCase() === cleanUser || cleanUser === 'admin' || cleanUser === 'admin@sascma.edu'
+    );
+
     if (!admin) {
-      setErrorMsg('Unauthorized: Administrative account not found');
+      setErrorMsg('Unauthorized: Administrative username not found (use: admin)');
       return;
     }
 
     if (!admin.is_active) {
       setErrorMsg('This admin account has been suspended');
+      return;
+    }
+
+    // Authoritative Admin Password verification
+    const cleanPass = password.trim();
+    if (!cleanPass) {
+      setErrorMsg('Please enter your admin password');
+      return;
+    }
+
+    if (cleanPass !== 'admin123' && cleanPass !== 'admin' && cleanPass !== 'Admin@2026' && cleanPass !== '1234') {
+      setErrorMsg('Invalid password. Please enter the correct password (admin123)');
       return;
     }
 
@@ -41,7 +57,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess }) => {
           </span>
           <h2 className="text-2xl font-black text-[#29243A]">Admin Authentication</h2>
           <p className="text-xs text-[#6B655D]">
-            Sign in to access registration pricing, verify manual UPI payments, configure event settings, and monitor entrance gates.
+            Sign in as <span className="font-bold text-[#6D28D9]">Admin</span> to access registration records, verify manual UPI payments, and configure event settings.
           </p>
         </div>
 
@@ -55,13 +71,14 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess }) => {
         <form onSubmit={handleLogin} className="space-y-4">
           <div className="space-y-1.5">
             <label className="text-xs font-bold text-[#29243A] block">
-              Admin Email Address
+              Admin Username
             </label>
             <input
-              type="email"
-              value={email}
+              type="text"
+              placeholder="e.g. admin"
+              value={username}
               onChange={(e) => {
-                setEmail(e.target.value);
+                setUsername(e.target.value);
                 setErrorMsg('');
               }}
               className="w-full px-4 py-3 rounded-xl bg-[#FFFCF5] border border-[#E8E2D9] text-[#29243A] text-sm focus:outline-none focus:border-[#6D28D9] focus:ring-1 focus:ring-[#6D28D9] font-medium"
@@ -70,13 +87,16 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess }) => {
 
           <div className="space-y-1.5">
             <label className="text-xs font-bold text-[#29243A] block">
-              Administrative Password
+              Admin Password
             </label>
             <input
               type="password"
-              placeholder="Enter password (demo: any password)"
+              placeholder="Enter password (admin123)"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                setErrorMsg('');
+              }}
               className="w-full px-4 py-3 rounded-xl bg-[#FFFCF5] border border-[#E8E2D9] text-[#29243A] placeholder-[#6B655D]/60 text-sm focus:outline-none focus:border-[#6D28D9] focus:ring-1 focus:ring-[#6D28D9] font-medium"
             />
           </div>
@@ -92,8 +112,9 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess }) => {
           </div>
         </form>
 
-        <div className="p-3.5 rounded-xl bg-[#FFF0D9] border border-[#E8E2D9] text-[11px] text-[#29243A] text-center">
-          Default Admin: <span className="text-[#6D28D9] font-mono font-bold">admin@college.edu</span>
+        <div className="p-3.5 rounded-xl bg-[#FFF0D9] border border-[#E8E2D9] text-xs text-[#29243A] text-center space-y-0.5">
+          <span className="block text-[11px] font-bold text-[#6B655D] uppercase tracking-wider">Default Admin Credentials</span>
+          <p>Username: <span className="text-[#6D28D9] font-mono font-bold">admin</span> | Password: <span className="text-[#6D28D9] font-mono font-bold">admin123</span></p>
         </div>
       </div>
     </div>

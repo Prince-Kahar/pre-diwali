@@ -55,7 +55,7 @@ const DEFAULT_EVENT: EventSettings = {
   venue_directions: 'Surat - Dumas Rd, Opp Govardhan-Temple(Haveli), Vesu, Surat, Gujarat 395007, India',
   registration_opens_at: '2026-10-15T00:00:00+05:30',
   registration_closes_at: '2026-11-04T12:00:00+05:30',
-  registration_fee_minor_units: 25000, // ₹250.00
+  registration_fee_minor_units: 30000, // ₹300.00
   currency: 'INR',
   max_capacity: 1200,
   maximum_capacity: 1200,
@@ -79,8 +79,8 @@ const DEFAULT_EVENT: EventSettings = {
 const DEFAULT_PROFILES: UserProfile[] = [
   {
     id: 'p1000000-0000-4000-a000-000000000001',
-    email: 'admin@college.edu',
-    display_name: 'Prof. Ramesh Sharma (Admin)',
+    email: 'admin',
+    display_name: 'Admin',
     role: 'ADMIN',
     is_active: true,
     created_at: new Date().toISOString(),
@@ -88,17 +88,8 @@ const DEFAULT_PROFILES: UserProfile[] = [
   },
   {
     id: 'p1000000-0000-4000-a000-000000000002',
-    email: 'gate1.staff@college.edu',
-    display_name: 'Gate 1 - Entry Volunteer',
-    role: 'STAFF',
-    is_active: true,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: 'p1000000-0000-4000-a000-000000000003',
-    email: 'gate2.staff@college.edu',
-    display_name: 'Gate 2 - Courtyard Volunteer',
+    email: 'staff',
+    display_name: 'Staff Scanner',
     role: 'STAFF',
     is_active: true,
     created_at: new Date().toISOString(),
@@ -123,9 +114,6 @@ class PreDiwaliDataStore {
 
   constructor() {
     this.loadFromStorage();
-    if (this.registrations.length === 0) {
-      this.seedInitialRegistrations();
-    }
     if (this.pricingHistory.length === 0) {
       this.seedInitialPricingHistory();
     }
@@ -154,20 +142,27 @@ class PreDiwaliDataStore {
       this.event.payment_upi_id = 'madhavikalathiya2007@sbi';
       this.event.payment_upi_name = 'Madhavi Kalathiya';
       this.event.payment_mode = 'STATIC_UPI';
+      this.event.registration_fee_minor_units = 30000;
       this.event.allowed_academic_years = ['FY - M.Sc.IT', 'FY - Data Science', 'SY - M.Sc.IT', 'SY - Data Science'];
       this.persist();
 
-      const pr = localStorage.getItem(STORAGE_KEYS.PROFILES);
-      if (pr) this.profiles = JSON.parse(pr);
+      // Profiles: Admin and Staff Scanner
+      this.profiles = [...DEFAULT_PROFILES];
 
       const r = localStorage.getItem(STORAGE_KEYS.REGISTRATIONS);
-      if (r) this.registrations = JSON.parse(r);
+      if (r) {
+        this.registrations = JSON.parse(r).filter((item: Registration) => !item.id.startsWith('reg-seed-'));
+      }
 
       const p = localStorage.getItem(STORAGE_KEYS.PAYMENTS);
-      if (p) this.payments = JSON.parse(p);
+      if (p) {
+        this.payments = JSON.parse(p).filter((item: PaymentRecord) => !item.id.startsWith('pay-seed-'));
+      }
 
       const ps = localStorage.getItem(STORAGE_KEYS.PASSES);
-      if (ps) this.passes = JSON.parse(ps);
+      if (ps) {
+        this.passes = JSON.parse(ps).filter((item: EntryPass) => !item.id.startsWith('pass-seed-'));
+      }
 
       const s = localStorage.getItem(STORAGE_KEYS.SCANS);
       if (s) this.scans = JSON.parse(s);
@@ -218,68 +213,7 @@ class PreDiwaliDataStore {
   }
 
   private async seedInitialRegistrations() {
-    // Generate 3 sample verified & paid registrations to display in dashboard metrics & test scanners immediately
-    const sampleStudents = [
-      { name: 'Aarav Patel', roll: 'FYCS101', year: 'FY - M.Sc.IT' as const, food: 'Regular' as const, phone: '9876543210' },
-      { name: 'Priya Shah', roll: 'SYIT205', year: 'SY - Data Science' as const, food: 'Jain' as const, phone: '9820054321' },
-      { name: 'Rohan Deshmukh', roll: 'FYCS102', year: 'FY - Data Science' as const, food: 'Regular' as const, phone: '9123456789' },
-    ];
-
-    for (let i = 0; i < sampleStudents.length; i++) {
-      const s = sampleStudents[i];
-      const regId = `reg-seed-00${i + 1}`;
-      const now = new Date(Date.now() - (i + 1) * 3600000).toISOString();
-      const normalizedRoll = normalizeRollNumber(s.roll);
-
-      const reg: Registration = {
-        id: regId,
-        event_id: this.event.id,
-        full_name: s.name,
-        academic_year: s.year,
-        food_preference: s.food,
-        contact_number: s.phone,
-        normalized_roll_number: normalizedRoll,
-        consent_agreed: true,
-        payment_status: 'PAID',
-        expected_amount_minor_units: this.event.registration_fee_minor_units,
-        currency: 'INR',
-        created_at: now,
-        updated_at: now,
-      };
-      this.registrations.push(reg);
-
-      const payment: PaymentRecord = {
-        id: `pay-seed-00${i + 1}`,
-        registration_id: regId,
-        provider: 'STATIC_UPI',
-        transaction_reference: `UPI${882390123450 + i}`,
-        expected_amount_minor_units: this.event.registration_fee_minor_units,
-        currency: 'INR',
-        status: 'PAID',
-        verification_method: 'MANUAL_ADMIN',
-        verified_by: this.profiles[0].id,
-        verified_by_name: this.profiles[0].display_name,
-        verified_at: now,
-        created_at: now,
-        updated_at: now,
-      };
-      this.payments.push(payment);
-
-      const rawToken = `PREDIWALI_PASS_DEMO_SAMPLE_00${i + 1}`;
-      const tokenHash = await hashToken(rawToken);
-
-      const pass: EntryPass = {
-        id: `pass-seed-00${i + 1}`,
-        registration_id: regId,
-        token_hash: tokenHash,
-        status: 'VALID',
-        issued_at: now,
-      };
-      this.passes.push(pass);
-      this.clientTokens[regId] = rawToken;
-    }
-
-    this.persist();
+    // No dummy registrations! Only genuine student registrations are saved and synced to Supabase.
   }
 
   private seedInitialPricingHistory() {
