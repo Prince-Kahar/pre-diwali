@@ -118,9 +118,6 @@ class PreDiwaliDataStore {
 
   constructor() {
     this.loadFromStorage();
-    if (this.pricingHistory.length === 0) {
-      this.seedInitialPricingHistory();
-    }
     if (!this.credentials['admin'] || !this.credentials['staff']) {
       this.seedInitialCredentials();
     }
@@ -159,7 +156,13 @@ class PreDiwaliDataStore {
       const r = localStorage.getItem(STORAGE_KEYS.REGISTRATIONS);
       if (r) {
         this.registrations = JSON.parse(r)
-          .filter((item: Registration) => !item.id.startsWith('reg-seed-'))
+          .filter(
+            (item: Registration) =>
+              !item.id.startsWith('reg-seed-') &&
+              !item.id.toLowerCase().includes('dummy') &&
+              !item.normalized_roll_number.toLowerCase().includes('dummy') &&
+              !item.full_name.toLowerCase().includes('dummy')
+          )
           .map((item: Registration) => {
             if (item.expected_amount_minor_units === 25000) {
               return { ...item, expected_amount_minor_units: 30000 };
@@ -171,7 +174,11 @@ class PreDiwaliDataStore {
       const p = localStorage.getItem(STORAGE_KEYS.PAYMENTS);
       if (p) {
         this.payments = JSON.parse(p)
-          .filter((item: PaymentRecord) => !item.id.startsWith('pay-seed-'))
+          .filter(
+            (item: PaymentRecord) =>
+              !item.id.startsWith('pay-seed-') &&
+              !item.id.toLowerCase().includes('dummy')
+          )
           .map((item: PaymentRecord) => {
             if (item.expected_amount_minor_units === 25000) {
               return { ...item, expected_amount_minor_units: 30000 };
@@ -182,17 +189,39 @@ class PreDiwaliDataStore {
 
       const ps = localStorage.getItem(STORAGE_KEYS.PASSES);
       if (ps) {
-        this.passes = JSON.parse(ps).filter((item: EntryPass) => !item.id.startsWith('pass-seed-'));
+        this.passes = JSON.parse(ps).filter(
+          (item: EntryPass) =>
+            !item.id.startsWith('pass-seed-') &&
+            !item.id.toLowerCase().includes('dummy')
+        );
       }
 
       const s = localStorage.getItem(STORAGE_KEYS.SCANS);
-      if (s) this.scans = JSON.parse(s);
+      if (s) {
+        this.scans = JSON.parse(s).filter(
+          (item: EntryScanLog) =>
+            !item.id.startsWith('scan-seed-') &&
+            !item.id.toLowerCase().includes('dummy')
+        );
+      }
 
       const a = localStorage.getItem(STORAGE_KEYS.AUDIT);
-      if (a) this.auditLogs = JSON.parse(a);
+      if (a) {
+        this.auditLogs = JSON.parse(a).filter(
+          (item: AuditLog) =>
+            !item.target_id?.toLowerCase().includes('seed') &&
+            !item.target_id?.toLowerCase().includes('dummy')
+        );
+      }
 
       const ph = localStorage.getItem(STORAGE_KEYS.PRICING_HISTORY);
-      if (ph) this.pricingHistory = JSON.parse(ph);
+      if (ph) {
+        this.pricingHistory = JSON.parse(ph).filter(
+          (item: PricingHistoryRecord) =>
+            !item.id.startsWith('price-hist-seed-') &&
+            !item.id.toLowerCase().includes('dummy')
+        );
+      }
 
       const t = localStorage.getItem(STORAGE_KEYS.ACTIVE_PASS_TOKENS);
       if (t) this.clientTokens = JSON.parse(t);
@@ -235,27 +264,6 @@ class PreDiwaliDataStore {
       this.locks.delete(key);
       resolveLock();
     };
-  }
-
-  private async seedInitialRegistrations() {
-    // No dummy registrations! Only genuine student registrations are saved and synced to Supabase.
-  }
-
-  private seedInitialPricingHistory() {
-    const admin = this.profiles[0];
-    const initialRecord: PricingHistoryRecord = {
-      id: 'price-hist-seed-001',
-      event_id: this.event.id,
-      previous_fee_minor_units: this.event.registration_fee_minor_units,
-      new_fee_minor_units: this.event.registration_fee_minor_units,
-      currency: this.event.currency,
-      change_reason: 'Initial event baseline fee establishment',
-      changed_by: admin ? admin.id : 'system-seed',
-      changed_by_name: admin ? admin.display_name : 'System Baseline',
-      created_at: new Date(Date.now() - 7 * 86400000).toISOString(),
-    };
-    this.pricingHistory.push(initialRecord);
-    this.persist();
   }
 
   // --- PUBLIC API METHODS ---
