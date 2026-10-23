@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   User,
   GraduationCap,
@@ -12,6 +12,11 @@ import {
   CheckCircle2,
   ArrowLeft,
   Sparkles,
+  Camera,
+  Upload,
+  RefreshCw,
+  Image as ImageIcon,
+  Trash2,
 } from 'lucide-react';
 import { EventSettings, AcademicYear, FoodPreference, Registration } from '../../types';
 import { registrationSchema } from '../../lib/validation';
@@ -43,10 +48,28 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
     other_talent_text: '',
   });
 
+  // Student Identity Photo State (Selfie / File Upload)
+  const [identityPhoto, setIdentityPhoto] = useState<string | null>(null);
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const identitySectionRef = useRef<HTMLDivElement | null>(null);
+
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [generalError, setGeneralError] = useState<string | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+
+  // Clean up camera stream on unmount
+  useEffect(() => {
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+      }
+    };
+  }, []);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
@@ -75,11 +98,111 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
     return formData.talent_option || '';
   };
 
+  // Image compressor for lightweight storage and fast rendering
+  const compressImage = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const maxDim = 520;
+          let width = img.width;
+          let height = img.height;
+          if (width > height) {
+            if (width > maxDim) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            }
+          } else {
+            if (height > maxDim) {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            resolve(e.target?.result as string);
+            return;
+          }
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', 0.82));
+        };
+        img.onerror = reject;
+        img.src = e.target?.result as string;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const startLiveCamera = async () => {
+    setCameraError(null);
+    setIsCameraOpen(true);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 640 } },
+        audio: false,
+      });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+      }
+    } catch (err) {
+      console.warn('Camera access error:', err);
+      setCameraError('Unable to access camera directly. Please grant permission or choose "Upload from Device".');
+    }
+  };
+
+  const stopLiveCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+    setIsCameraOpen(false);
+  };
+
+  const snapLivePhoto = () => {
+    if (!videoRef.current) return;
+    const video = videoRef.current;
+    const canvas = document.createElement('canvas');
+    const width = video.videoWidth || 480;
+    const height = video.videoHeight || 480;
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.translate(width, 0);
+      ctx.scale(-1, 1);
+      ctx.drawImage(video, 0, 0, width, height);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+      setIdentityPhoto(dataUrl);
+      stopLiveCamera();
+    }
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const dataUrl = await compressImage(file);
+      setIdentityPhoto(dataUrl);
+      stopLiveCamera();
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    } catch (err) {
+      console.error('File compression error:', err);
+    }
+  };
+
   const validateForm = (): boolean => {
     const computedTalent = getComputedTalent();
     const result = registrationSchema.safeParse({
       ...formData,
       performance_talent: computedTalent || undefined,
+      identity_photo_url: identityPhoto || undefined,
     });
     const formattedErrors: Record<string, string> = {};
 
@@ -95,8 +218,15 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
       formattedErrors.other_talent_text = 'Please specify your other performance details (Compulsory when Other is selected)';
     }
 
+    if (!identityPhoto) {
+      formattedErrors.identity_photo = 'Please take a selfie or upload your student photo for identity verification';
+    }
+
     if (Object.keys(formattedErrors).length > 0) {
       setFieldErrors(formattedErrors);
+      if (formattedErrors.identity_photo && identitySectionRef.current) {
+        identitySectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
       return false;
     }
 
@@ -126,6 +256,7 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
         roll_number: formData.roll_number,
         consent_agreed: formData.consent_agreed,
         performance_talent: computedTalent || undefined,
+        identity_photo_url: identityPhoto || undefined,
       });
 
       setShowConfirmModal(false);
@@ -297,7 +428,7 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
               <input
                 type="text"
                 name="roll_number"
-                placeholder="e.g. FYCS101 or SYIT205"
+                placeholder="e.g. 2021 or FYIT101"
                 value={formData.roll_number}
                 onChange={handleInputChange}
                 className={`w-full px-4 py-3 rounded-xl bg-[#FFFCF5] border ${
@@ -310,7 +441,7 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
             </div>
           </div>
 
-          {/* Field: Talent / Stage Performance Participation (Optional with compulsory Other text) */}
+          {/* Field: Talent / Stage Performance Participation */}
           <div className="space-y-2 p-4 rounded-2xl bg-[#FFF0D9]/40 border border-[#E8E2D9]">
             <div className="flex items-center justify-between">
               <label className="text-xs sm:text-sm font-bold text-[#29243A] flex items-center gap-1.5">
@@ -363,6 +494,167 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
             )}
           </div>
 
+          {/* ----------------- REQUIREMENT: STUDENT IDENTITY / SELFIE PHOTO UPLOAD ----------------- */}
+          <div
+            ref={identitySectionRef}
+            className={`p-5 rounded-3xl border-2 transition-all ${
+              fieldErrors.identity_photo
+                ? 'bg-rose-50/50 border-[#B91C1C]'
+                : identityPhoto
+                ? 'bg-[#F0FDF4] border-[#15803D]'
+                : 'bg-gradient-to-br from-[#FFF9EE] to-[#FFF0D9]/50 border-[#E99A20]/40'
+            }`}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <label className="text-xs sm:text-sm font-bold text-[#29243A] flex items-center gap-2">
+                <div className="p-1.5 rounded-xl bg-[#E99A20]/20 text-[#6D28D9]">
+                  <Camera className="w-4 h-4 text-[#E99A20]" />
+                </div>
+                <span>
+                  Upload Your Identity / Live Selfie <span className="text-[#E99A20] font-black">*</span>
+                </span>
+              </label>
+              {identityPhoto ? (
+                <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-[#15803D] border border-emerald-300 text-[10px] font-bold flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3" /> Photo Attached
+                </span>
+              ) : (
+                <span className="px-2.5 py-0.5 rounded-full bg-[#FFF0D9] text-[#E99A20] border border-[#E99A20]/30 text-[10px] font-bold">
+                  Required for Gate Verification
+                </span>
+              )}
+            </div>
+
+            <p className="text-xs text-[#6B655D] mb-4">
+              Take a quick live selfie or upload your student photo. This photo will be verified by entry gate staff and displayed in your pass & admin panel.
+            </p>
+
+            {/* Hidden file input for gallery / device upload */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              capture="user"
+              onChange={handleFileChange}
+              className="hidden"
+            />
+
+            {/* If Camera is active: Live camera preview */}
+            {isCameraOpen && (
+              <div className="mb-4 space-y-3">
+                <div className="relative mx-auto w-full max-w-xs aspect-square rounded-2xl overflow-hidden bg-black border-2 border-[#6D28D9] shadow-md flex items-center justify-center">
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className="w-full h-full object-cover transform -scale-x-100"
+                  />
+                  <div className="absolute inset-0 pointer-events-none border-2 border-dashed border-white/60 rounded-2xl m-4" />
+                </div>
+
+                <div className="flex gap-2 justify-center">
+                  <button
+                    type="button"
+                    onClick={snapLivePhoto}
+                    className="px-5 py-2.5 rounded-xl bg-[#6D28D9] hover:bg-[#5B21B6] text-white font-bold text-xs sm:text-sm flex items-center gap-2 shadow-md cursor-pointer transition-all"
+                  >
+                    <Camera className="w-4 h-4" />
+                    <span>Capture Selfie</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={stopLiveCamera}
+                    className="px-4 py-2.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-[#29243A] font-semibold text-xs cursor-pointer transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {cameraError && (
+              <p className="text-xs text-[#B91C1C] mb-3 font-medium bg-rose-50 p-2.5 rounded-xl border border-rose-200">
+                {cameraError}
+              </p>
+            )}
+
+            {/* Photo Preview when captured / uploaded */}
+            {identityPhoto && !isCameraOpen && (
+              <div className="p-3 bg-white rounded-2xl border border-[#E8E2D9] flex items-center gap-4 shadow-xs mb-3">
+                <img
+                  src={identityPhoto}
+                  alt="Student Selfie"
+                  className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl object-cover border-2 border-emerald-500 shadow-xs"
+                />
+                <div className="space-y-1.5 flex-1">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-[#15803D]">
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Identity Photo Captured!</span>
+                  </div>
+                  <p className="text-[11px] text-[#6B655D]">
+                    Ready for Gate Entry and Admin approval.
+                  </p>
+                  <div className="flex gap-2 pt-1 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={startLiveCamera}
+                      className="px-3 py-1.5 rounded-lg bg-[#FFF0D9] hover:bg-[#FFE6C2] text-[#29243A] font-bold text-[11px] flex items-center gap-1 cursor-pointer transition-colors"
+                    >
+                      <RefreshCw className="w-3 h-3 text-[#E99A20]" />
+                      <span>Retake Selfie</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="px-3 py-1.5 rounded-lg bg-[#FFFCF5] hover:bg-gray-100 text-[#6B655D] border border-[#E8E2D9] font-medium text-[11px] flex items-center gap-1 cursor-pointer transition-colors"
+                    >
+                      <Upload className="w-3 h-3" />
+                      <span>Change File</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIdentityPhoto(null)}
+                      className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 cursor-pointer transition-colors"
+                      title="Remove photo"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Action Buttons to Capture or Upload */}
+            {!identityPhoto && !isCameraOpen && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={startLiveCamera}
+                  className="p-3.5 rounded-2xl bg-white hover:bg-[#FFF8EE] border border-[#E99A20]/50 text-[#29243A] font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-xs cursor-pointer transition-all hover:scale-[1.01]"
+                >
+                  <Camera className="w-4 h-4 text-[#6D28D9]" />
+                  <span>Take Live Selfie</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="p-3.5 rounded-2xl bg-white hover:bg-[#FFF8EE] border border-[#E8E2D9] text-[#29243A] font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-xs cursor-pointer transition-all hover:scale-[1.01]"
+                >
+                  <Upload className="w-4 h-4 text-[#E99A20]" />
+                  <span>Upload Photo from Device</span>
+                </button>
+              </div>
+            )}
+
+            {fieldErrors.identity_photo && (
+              <p className="text-xs text-[#B91C1C] mt-2 font-medium flex items-center gap-1">
+                <AlertCircle className="w-3.5 h-3.5" />
+                <span>{fieldErrors.identity_photo}</span>
+              </p>
+            )}
+          </div>
+
           {/* Field 6: Consent */}
           <div className="pt-2">
             <label className="flex items-start gap-3 p-4 rounded-2xl bg-[#FFF0D9]/50 border border-[#E8E2D9] cursor-pointer">
@@ -389,16 +681,31 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
             )}
           </div>
 
-          {/* Submit Button */}
+          {/* ----------------- SUBMIT / PROCEED BUTTONS ----------------- */}
           <div className="pt-4">
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="w-full py-4 rounded-2xl bg-[#6D28D9] hover:bg-[#5B21B6] text-white font-bold text-base shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-            >
-              <span>Continue to Payment Review</span>
-              <ArrowRight className="w-5 h-5" />
-            </button>
+            {!identityPhoto ? (
+              <button
+                type="button"
+                onClick={() => {
+                  if (validateForm()) {
+                    // if photo is missing, validateForm scrolls to it
+                  }
+                }}
+                className="w-full py-4 rounded-2xl bg-[#E99A20] hover:bg-[#D9820D] text-white font-bold text-base shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <Camera className="w-5 h-5" />
+                <span>Upload Your Identity (Take Selfie / Photo)</span>
+              </button>
+            ) : (
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="w-full py-4 rounded-2xl bg-[#6D28D9] hover:bg-[#5B21B6] text-white font-bold text-base shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                <span>Continue to Payment Review</span>
+                <ArrowRight className="w-5 h-5" />
+              </button>
+            )}
           </div>
         </form>
       </div>
@@ -416,6 +723,20 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
                 Please verify your details carefully before proceeding to payment.
               </p>
             </div>
+
+            {/* Student Identity Photo in Modal */}
+            {identityPhoto && (
+              <div className="flex flex-col items-center gap-2 p-3 bg-[#FFFCF5] rounded-2xl border border-[#E8E2D9]">
+                <img
+                  src={identityPhoto}
+                  alt="Student Identity"
+                  className="w-20 h-20 rounded-2xl object-cover border-2 border-[#6D28D9] shadow-sm"
+                />
+                <span className="text-[11px] font-bold text-[#6D28D9]">
+                  Verified Student Identity Photo
+                </span>
+              </div>
+            )}
 
             <div className="space-y-3 bg-[#FFFCF5] p-4 rounded-2xl border border-[#E8E2D9] text-xs">
               <div className="flex justify-between py-1.5 border-b border-[#E8E2D9]">
@@ -486,3 +807,4 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
     </div>
   );
 };
+

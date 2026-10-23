@@ -22,9 +22,13 @@ export type PaymentMode = 'GATEWAY' | 'STATIC_UPI';
 
 export type PassStatus = 'VALID' | 'USED' | 'REVOKED' | 'CANCELLED';
 
+export type ScanType = 'ENTRY' | 'DINNER';
+
 export type ScanResultCode = 
   | 'ENTRY_APPROVED'
+  | 'DINNER_APPROVED'
   | 'ALREADY_USED'
+  | 'ALREADY_CLAIMED_DINNER'
   | 'PAYMENT_NOT_VERIFIED'
   | 'INVALID_PASS'
   | 'PASS_CANCELLED';
@@ -120,6 +124,7 @@ export interface Registration {
   expected_amount_minor_units: number;
   currency: string;
   performance_talent?: string;
+  identity_photo_url?: string; // Student selfie or photo for visual gate verification
   internal_notes?: string;
   created_at: string;
   updated_at: string;
@@ -154,9 +159,14 @@ export interface EntryPass {
   raw_token?: string; // Only delivered directly to verified student on issue
   status: PassStatus;
   issued_at: string;
+  // 1. Entry Gate Checkpoint
   redeemed_at?: string;
   redeemed_by?: string;
   redeemed_by_name?: string;
+  // 2. Dinner / Food Counter Checkpoint
+  dinner_redeemed_at?: string;
+  dinner_redeemed_by?: string;
+  dinner_redeemed_by_name?: string;
   revoked_at?: string;
   replacement_of_pass_id?: string;
 }
@@ -165,6 +175,7 @@ export interface EntryScanLog {
   id: string;
   event_id: string;
   pass_id?: string;
+  scan_type?: ScanType;
   staff_user_id: string;
   staff_name?: string;
   scan_result: ScanResultCode;
@@ -173,6 +184,7 @@ export interface EntryScanLog {
   reason_code?: string;
   student_name?: string;
   roll_number?: string;
+  food_preference?: FoodPreference;
 }
 
 export interface AuditLog {
@@ -197,16 +209,20 @@ export interface StudentRegistrationInput {
   roll_number: string;
   consent_agreed: boolean;
   performance_talent?: string;
+  identity_photo_url?: string;
 }
 
 export interface ScanVerificationResult {
   success: boolean;
   status: ScanResultCode;
   message: string;
+  scan_type: ScanType;
   student_name?: string;
   roll_number?: string;
   academic_year?: AcademicYear;
   food_preference?: FoodPreference;
+  performance_talent?: string;
+  identity_photo_url?: string;
   scanned_at?: string;
   previous_scan_at?: string;
   previous_staff_name?: string;

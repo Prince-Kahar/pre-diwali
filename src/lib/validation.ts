@@ -82,6 +82,10 @@ export const registrationSchema = z.object({
     .trim()
     .max(150, 'Performance details cannot exceed 150 characters')
     .optional(),
+
+  identity_photo_url: z
+    .string()
+    .optional(),
 });
 
 export const manualPaymentClaimSchema = z.object({

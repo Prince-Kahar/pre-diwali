@@ -23,8 +23,9 @@ import {
   Wifi,
   WifiOff,
   Download,
+  Image as ImageIcon,
 } from 'lucide-react';
-import { EventSettings, UserProfile, ScanVerificationResult, EntryScanLog } from '../../types';
+import { EventSettings, UserProfile, ScanVerificationResult, EntryScanLog, ScanType } from '../../types';
 import { dataService } from '../../services/dataService';
 import { formatKolkataDateTime } from '../../lib/crypto';
 import collegeLogo from '../../assets/logo.png';
@@ -45,6 +46,9 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
   staffUser,
   onLogout,
 }) => {
+  // Dual Scan Mode: ENTRY (Gate) or DINNER (Food counter)
+  const [scanType, setScanType] = useState<ScanType>('ENTRY');
+
   const [isScanning, setIsScanning] = useState(false);
   const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
   const [torchOn, setTorchOn] = useState(false);
@@ -217,7 +221,8 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
       const result = await dataService.redeemEntryPass(
         token.trim(),
         staffUser.id,
-        `gate-${Date.now()}`
+        `${scanType.toLowerCase()}-${Date.now()}`,
+        scanType
       );
       setScanResult(result);
       loadStaffScans();
@@ -225,6 +230,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
       setScanResult({
         success: false,
         status: 'INVALID_PASS',
+        scan_type: scanType,
         message: err instanceof Error ? err.message : 'Error validating pass',
       });
     } finally {
@@ -251,9 +257,10 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
     }, 150);
   };
 
-  // Determine status color theme based on Requirement 7
-  const isApproved = scanResult?.status === 'ENTRY_APPROVED';
+  // Determine status color theme based on scan mode & result code
+  const isApproved = scanResult?.status === 'ENTRY_APPROVED' || scanResult?.status === 'DINNER_APPROVED';
   const isPending = scanResult?.status === 'PAYMENT_NOT_VERIFIED';
+  const isAlreadyUsed = scanResult?.status === 'ALREADY_USED' || scanResult?.status === 'ALREADY_CLAIMED_DINNER';
   const isRejected = scanResult && !isApproved && !isPending;
 
   return (
@@ -271,10 +278,10 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
           <div>
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs uppercase tracking-wider font-bold text-[#E99A20]">
-                Gate Entry Scanner
+                {scanType === 'ENTRY' ? '🚪 Main Gate Entry' : '🍽️ Dinner Counter'}
               </span>
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-[#15803D] border border-emerald-200 font-semibold">
-                Active Staff
+                Staff Verified
               </span>
               {isStandalone && (
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-50 text-[#6D28D9] border border-purple-200 font-bold flex items-center gap-1">
@@ -331,6 +338,52 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
         </div>
       </div>
 
+      {/* ----------------- SCANNER MODE SELECTOR (ENTRY GATE vs DINNER MEAL) ----------------- */}
+      <div className="p-2 bg-white rounded-3xl border border-[#E8E2D9] shadow-sm">
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              if (scanType !== 'ENTRY') {
+                setScanType('ENTRY');
+                setScanResult(null);
+              }
+            }}
+            className={`py-3 px-3 rounded-2xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all cursor-pointer ${
+              scanType === 'ENTRY'
+                ? 'bg-[#6D28D9] text-white shadow-md'
+                : 'bg-[#FFFCF5] text-[#6B655D] hover:bg-[#FFF0D9] hover:text-[#29243A]'
+            }`}
+          >
+            <ShieldCheck className="w-4 h-4" />
+            <span>🚪 1. Entry Gate Scan</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              if (scanType !== 'DINNER') {
+                setScanType('DINNER');
+                setScanResult(null);
+              }
+            }}
+            className={`py-3 px-3 rounded-2xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all cursor-pointer ${
+              scanType === 'DINNER'
+                ? 'bg-[#E99A20] text-white shadow-md'
+                : 'bg-[#FFFCF5] text-[#6B655D] hover:bg-[#FFF0D9] hover:text-[#29243A]'
+            }`}
+          >
+            <Utensils className="w-4 h-4" />
+            <span>🍽️ 2. Dinner Meal Scan</span>
+          </button>
+        </div>
+        <p className="text-[11px] text-[#6B655D] text-center pt-2">
+          {scanType === 'ENTRY'
+            ? 'Scanning in Main Gate Admission mode (one-time admission entry).'
+            : 'Scanning in Food Distribution mode (verifies Regular vs Jain meal coupon).'}
+        </p>
+      </div>
+
       {/* ----------------- AUTHORITATIVE RESULT SCREEN ----------------- */}
       {scanResult ? (
         <div
@@ -373,9 +426,44 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
               {scanResult.message}
             </h2>
             <p className="text-xs text-[#6B655D]">
-              Verified by Gate Staff: <span className="font-bold text-[#29243A]">{staffUser.display_name}</span>
+              Verified by: <span className="font-bold text-[#29243A]">{staffUser.display_name}</span> ({scanType} mode)
             </p>
           </div>
+
+          {/* Student Selfie / Identity Photo (When Available) */}
+          {scanResult.identity_photo_url && (
+            <div className="flex flex-col items-center gap-1.5 pt-1">
+              <img
+                src={scanResult.identity_photo_url}
+                alt={scanResult.student_name || 'Student Identity'}
+                className="w-28 h-28 sm:w-32 sm:h-32 rounded-2xl object-cover border-4 border-white shadow-lg ring-2 ring-emerald-500/40"
+              />
+              <span className="text-[10px] font-bold uppercase tracking-wider text-[#15803D] bg-emerald-100 px-3 py-0.5 rounded-full border border-emerald-300">
+                Student Verified Photo
+              </span>
+            </div>
+          )}
+
+          {/* Prominent Dinner Meal Preference Badge (When scanning in DINNER mode) */}
+          {scanResult.scan_type === 'DINNER' && scanResult.food_preference && isApproved && (
+            <div
+              className={`p-4 rounded-2xl border-2 text-center max-w-md mx-auto shadow-xs ${
+                scanResult.food_preference === 'Jain'
+                  ? 'bg-emerald-100 border-emerald-500 text-emerald-900'
+                  : 'bg-amber-100 border-amber-500 text-amber-900'
+              }`}
+            >
+              <span className="text-xs uppercase font-extrabold tracking-wider block">
+                Food Token Claimed
+              </span>
+              <span className="text-2xl font-black block mt-0.5">
+                {scanResult.food_preference === 'Jain' ? '🌱 JAIN MEAL' : '🍲 REGULAR MEAL'}
+              </span>
+              <span className="text-[11px] opacity-80 mt-0.5 block">
+                Please serve the verified meal packet
+              </span>
+            </div>
+          )}
 
           {/* Student Info Card (When available) */}
           {scanResult.student_name && (
@@ -396,14 +484,18 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
                 <div className="flex justify-between items-center pb-2 border-b border-[#E8E2D9]">
                   <span className="text-xs text-[#6B655D] font-medium">Academic Year:</span>
                   <span className="font-bold text-[#29243A] text-xs">
-                    {scanResult.academic_year} (Undergraduate)
+                    {scanResult.academic_year}
                   </span>
                 </div>
               )}
               {scanResult.food_preference && (
                 <div className="flex justify-between items-center pt-1">
-                  <span className="text-xs text-[#29243A] font-bold">Food Preference:</span>
-                  <span className="px-3 py-1 rounded-full bg-[#FFF0D9] border border-[#E99A20]/40 text-[#29243A] font-black text-xs">
+                  <span className="text-xs text-[#29243A] font-bold">Dinner Preference:</span>
+                  <span className={`px-3 py-1 rounded-full font-black text-xs ${
+                    scanResult.food_preference === 'Jain'
+                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                      : 'bg-[#FFF0D9] text-[#E99A20] border border-[#E99A20]/40'
+                  }`}>
                     {scanResult.food_preference} Dinner
                   </span>
                 </div>
@@ -411,19 +503,23 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
             </div>
           )}
 
-          {/* Prior Scan Details for ALREADY_USED */}
-          {scanResult.status === 'ALREADY_USED' && scanResult.previous_scan_at && (
+          {/* Prior Scan Details for ALREADY_USED or ALREADY_CLAIMED_DINNER */}
+          {isAlreadyUsed && scanResult.previous_scan_at && (
             <div className="p-4 rounded-2xl bg-white border border-[#B91C1C]/40 text-left text-xs space-y-1 max-w-md mx-auto shadow-xs">
               <p className="font-bold text-[#B91C1C] flex items-center gap-1.5">
                 <Clock className="w-4 h-4 text-[#B91C1C]" />
-                <span>Original Scan Timestamp:</span>
+                <span>
+                  {scanResult.status === 'ALREADY_CLAIMED_DINNER'
+                    ? 'Original Dinner Scan Timestamp:'
+                    : 'Original Entry Gate Timestamp:'}
+                </span>
               </p>
               <p className="text-[#29243A] font-semibold">
                 {formatKolkataDateTime(scanResult.previous_scan_at)}
               </p>
               {scanResult.previous_staff_name && (
                 <p className="text-[#6B655D] text-[11px] pt-1">
-                  Previously Admitted by: <span className="font-bold text-[#29243A]">{scanResult.previous_staff_name}</span>
+                  Previously Scanned by: <span className="font-bold text-[#29243A]">{scanResult.previous_staff_name}</span>
                 </p>
               )}
             </div>
@@ -451,7 +547,9 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
         /* ----------------- CAMERA & SCANNER INTERFACE ----------------- */
         <div className="p-6 rounded-3xl bg-white border border-[#E8E2D9] shadow-sm space-y-6">
           <div className="text-center space-y-1">
-            <h2 className="text-xl font-bold text-[#29243A]">Live Camera Entry Scanner</h2>
+            <h2 className="text-xl font-bold text-[#29243A]">
+              Live Camera {scanType === 'ENTRY' ? 'Gate Admission' : 'Dinner Counter'} Scanner
+            </h2>
             <p className="text-xs text-[#6B655D]">
               Hold the student's entry QR pass steady inside the camera viewport.
             </p>
@@ -468,7 +566,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
                 </div>
                 <div className="space-y-1">
                   <h3 className="text-base font-bold text-[#29243A]">
-                    Scanner is Idle
+                    Scanner is Idle ({scanType === 'ENTRY' ? 'Gate Entry' : 'Dinner Counter'})
                   </h3>
                   <p className="text-xs text-[#6B655D] max-w-xs">
                     Click the button below to activate the rear camera for fast scanning.
@@ -536,11 +634,11 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
             <form onSubmit={handleManualSubmit} className="p-4 rounded-2xl bg-[#FFFCF5] border border-[#E8E2D9] space-y-3">
               <div className="space-y-1">
                 <label className="text-xs font-bold text-[#29243A] block">
-                  Manual Pass Token Entry
+                  Manual Pass Token / Roll No Entry ({scanType} mode)
                 </label>
                 <input
                   type="text"
-                  placeholder="Paste or enter PREDIWALI_PASS_... token or hash"
+                  placeholder="Paste PREDIWALI_PASS_... token, roll number (e.g. IT2021) or hash"
                   value={manualToken}
                   onChange={(e) => setManualToken(e.target.value)}
                   className="w-full px-4 py-2.5 rounded-xl bg-white border border-[#E8E2D9] text-[#29243A] placeholder-[#6B655D]/60 focus:outline-none focus:border-[#6D28D9] text-xs font-mono font-medium"
@@ -551,7 +649,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
                 disabled={!manualToken.trim() || isProcessing}
                 className="w-full py-2.5 rounded-xl bg-[#6D28D9] hover:bg-[#5B21B6] text-white font-bold text-xs transition-colors cursor-pointer disabled:opacity-50 shadow-xs"
               >
-                Validate Pass
+                Validate Pass for {scanType}
               </button>
             </form>
           )}
@@ -588,10 +686,17 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
                     className="p-3 rounded-xl bg-[#FFFCF5] border border-[#E8E2D9] flex items-center justify-between text-xs"
                   >
                     <div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                          scan.scan_type === 'DINNER'
+                            ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                            : 'bg-purple-100 text-purple-800 border border-purple-300'
+                        }`}>
+                          {scan.scan_type || 'ENTRY'}
+                        </span>
                         <span
                           className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                            scan.scan_result === 'ENTRY_APPROVED'
+                            scan.scan_result === 'ENTRY_APPROVED' || scan.scan_result === 'DINNER_APPROVED'
                               ? 'bg-emerald-50 text-[#15803D] border border-emerald-200'
                               : 'bg-rose-50 text-[#B91C1C] border border-rose-200'
                           }`}
@@ -607,9 +712,14 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
                           </span>
                         )}
                       </div>
-                      <span className="text-[10px] text-[#6B655D] block mt-1">
-                        {formatKolkataDateTime(scan.scanned_at)}
-                      </span>
+                      <div className="flex items-center gap-3 mt-1 text-[10px] text-[#6B655D]">
+                        <span>{formatKolkataDateTime(scan.scanned_at)}</span>
+                        {scan.food_preference && (
+                          <span className="font-semibold text-[#E99A20]">
+                            • {scan.food_preference} Dinner
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))
@@ -621,3 +731,4 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
     </div>
   );
 };
+

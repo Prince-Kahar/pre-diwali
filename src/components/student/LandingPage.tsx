@@ -18,7 +18,7 @@ import collegeLogo from '../../assets/logo.png';
 interface LandingPageProps {
   event: EventSettings;
   onStartRegistration: () => void;
-  onLookupRollNumber: (roll: string) => void;
+  onLookupRollNumber: (roll: string, courseFilter?: string) => void;
   onOpenTerms: () => void;
 }
 
@@ -29,6 +29,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   onOpenTerms,
 }) => {
   const [lookupRoll, setLookupRoll] = useState('');
+  const [lookupCourse, setLookupCourse] = useState<'ALL' | 'IT' | 'DS'>('ALL');
   const [lookupError, setLookupError] = useState('');
 
   const handleLookupSubmit = (e: React.FormEvent) => {
@@ -38,7 +39,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       return;
     }
     setLookupError('');
-    onLookupRollNumber(lookupRoll.trim());
+    onLookupRollNumber(lookupRoll.trim(), lookupCourse === 'ALL' ? undefined : lookupCourse);
   };
 
   const dynamicFee = formatINR(event.registration_fee_minor_units, event.currency);
@@ -167,11 +168,20 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
         <form onSubmit={handleLookupSubmit} className="space-y-3">
           <div className="flex flex-col sm:flex-row gap-2.5">
+            <select
+              value={lookupCourse}
+              onChange={(e) => setLookupCourse(e.target.value as 'ALL' | 'IT' | 'DS')}
+              className="px-3.5 py-3 rounded-xl bg-[#FFFCF5] border border-[#E8E2D9] text-[#29243A] text-xs sm:text-sm font-semibold focus:outline-none focus:border-[#6D28D9] cursor-pointer"
+            >
+              <option value="ALL">All Departments</option>
+              <option value="IT">M.Sc. IT (IT prefix)</option>
+              <option value="DS">Data Science (DS prefix)</option>
+            </select>
             <div className="relative flex-1">
               <Search className="w-4 h-4 text-[#6B655D] absolute left-3.5 top-3.5" />
               <input
                 type="text"
-                placeholder="Enter Roll No (e.g. FYCS101 or SYIT205)"
+                placeholder="Enter Roll No (e.g. 2021 or FYIT101)"
                 value={lookupRoll}
                 onChange={(e) => {
                   setLookupRoll(e.target.value);

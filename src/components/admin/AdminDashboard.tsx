@@ -135,6 +135,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     currency: string;
     paymentRecord: PaymentRecord & { registration?: Registration };
   } | null>(null);
+  const [viewingStudentPhoto, setViewingStudentPhoto] = useState<{
+    url: string;
+    name: string;
+    roll: string;
+  } | null>(null);
   const [newStaffName, setNewStaffName] = useState('');
   const [newStaffEmail, setNewStaffEmail] = useState('');
   const [staffFormError, setStaffFormError] = useState('');
@@ -291,6 +296,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       alert('Entry pass re-activated successfully! The student can now scan their QR pass again at the gate.');
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Failed to reactivate pass');
+    }
+  };
+
+  // Reset Dinner Meal Scan (Allow student another meal if authorized)
+  const handleResetDinnerScan = async (passId: string, studentName?: string) => {
+    const confirmed = window.confirm(
+      `Reset dinner meal status for ${studentName || 'this student'}? This will allow them to scan for dinner meal distribution once more.`
+    );
+    if (!confirmed) return;
+    try {
+      await dataService.reactivateDinnerScanAdmin(passId, adminUser.id, 'Dinner meal status reset by admin');
+      refreshAll();
+      alert('Dinner scan reset successfully! The student can now claim dinner again.');
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to reset dinner scan');
     }
   };
 
@@ -546,6 +566,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       const gateTime = r.pass?.redeemed_at
         ? formatReportDateTime(r.pass.redeemed_at)
         : (r.pass?.status === 'USED' ? 'Scanned' : 'Not scanned');
+      const dinnerTime = r.pass?.dinner_redeemed_at
+        ? formatReportDateTime(r.pass.dinner_redeemed_at)
+        : 'Not claimed';
       const utr = r.payment?.transaction_reference || '—';
 
       return `
@@ -563,6 +586,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <td>${regTime}</td>
           <td>${apprTime}</td>
           <td>${gateTime}</td>
+          <td>${dinnerTime}</td>
           <td style="font-family: monospace;">${utr}</td>
         </tr>
       `;
@@ -587,7 +611,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           Generated on: ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} (IST) | 
           Total Filtered Records: ${sortedRegistrations.length} | 
           Paid: ${sortedRegistrations.filter((r) => r.payment_status === 'PAID').length} | 
-          Admitted at Entrance: ${sortedRegistrations.filter((r) => r.pass?.status === 'USED').length}
+          Admitted at Entrance: ${sortedRegistrations.filter((r) => r.pass?.status === 'USED').length} | 
+          Dinner Claimed: ${sortedRegistrations.filter((r) => r.pass?.dinner_redeemed_at).length}
         </div>
         <table>
           <thead>
@@ -605,6 +630,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <th>Registration Timestamp</th>
               <th>Approval Timestamp</th>
               <th>Gate Scan Timestamp</th>
+              <th>Dinner Scan Timestamp</th>
               <th>UPI Reference / UTR</th>
             </tr>
           </thead>
@@ -664,19 +690,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       80
     );
 
-    // Table Column Definitions (Total ~786pt width)
+    // Table Column Definitions (Total ~785pt width)
     const cols = [
-      { title: '#', width: 25 },
-      { title: 'Roll No', width: 60 },
-      { title: 'Student Name', width: 110 },
-      { title: 'Course / Year', width: 85 },
-      { title: 'Food', width: 45 },
-      { title: 'Stage Talent', width: 85 },
-      { title: 'Payment', width: 50 },
-      { title: 'Pass Status', width: 55 },
-      { title: 'Reg Timestamp', width: 85 },
-      { title: 'Appr Timestamp', width: 85 },
-      { title: 'Gate Scan Time', width: 100 },
+      { title: '#', width: 22 },
+      { title: 'Roll No', width: 55 },
+      { title: 'Student Name', width: 105 },
+      { title: 'Course / Year', width: 75 },
+      { title: 'Food', width: 40 },
+      { title: 'Stage Talent', width: 70 },
+      { title: 'Payment', width: 48 },
+      { title: 'Pass Status', width: 48 },
+      { title: 'Reg Time', width: 80 },
+      { title: 'Appr Time', width: 80 },
+      { title: 'Gate Scan', width: 82 },
+      { title: 'Dinner Scan', width: 80 },
     ];
 
     let currentY = 96;
@@ -694,7 +721,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       let x = margin;
       cols.forEach((col) => {
-        doc.text(col.title, x + 4, y + 13);
+        doc.text(col.title, x + 3, y + 13);
         x += col.width;
       });
     };
@@ -703,7 +730,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     currentY += rowHeight;
 
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
+    doc.setFontSize(7.2);
 
     sortedRegistrations.forEach((r, idx) => {
       if (currentY + rowHeight > pageHeight - 30) {
@@ -712,7 +739,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         drawTableHeader(currentY);
         currentY += rowHeight;
         doc.setFont('helvetica', 'normal');
-        doc.setFontSize(7.5);
+        doc.setFontSize(7.2);
       }
 
       if (idx % 2 === 1) {
@@ -732,23 +759,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       const gateTime = r.pass?.redeemed_at
         ? formatReportDateTime(r.pass.redeemed_at)
         : (r.pass?.status === 'USED' ? 'Scanned' : 'Not scanned');
+      const dinnerTime = r.pass?.dinner_redeemed_at
+        ? formatReportDateTime(r.pass.dinner_redeemed_at)
+        : 'Not claimed';
 
       const values = [
         (idx + 1).toString(),
         r.normalized_roll_number,
-        r.full_name.length > 20 ? r.full_name.slice(0, 19) + '…' : r.full_name,
+        r.full_name.length > 18 ? r.full_name.slice(0, 17) + '…' : r.full_name,
         r.academic_year,
         r.food_preference,
-        r.performance_talent ? (r.performance_talent.length > 15 ? r.performance_talent.slice(0, 14) + '…' : r.performance_talent) : '—',
+        r.performance_talent ? (r.performance_talent.length > 13 ? r.performance_talent.slice(0, 12) + '…' : r.performance_talent) : '—',
         r.payment_status,
         r.pass?.status || 'NO_PASS',
         regTime,
         apprTime,
         gateTime,
+        dinnerTime,
       ];
 
       values.forEach((val, vIdx) => {
-        doc.text(val, x + 4, currentY + 13);
+        doc.text(val, x + 3, currentY + 13);
         x += cols[vIdx].width;
       });
 
@@ -1353,7 +1384,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         title="Click to sort by Student Name"
                       >
                         <div className="flex items-center gap-1.5">
-                          <span>Student Name</span>
+                          <span>Student & Identity</span>
                           {sortField === 'name' ? (
                             sortOrder === 'asc' ? (
                               <ArrowUp className="w-3.5 h-3.5 text-[#6D28D9]" />
@@ -1368,7 +1399,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <th className="p-3.5">Course / Year</th>
                       <th className="p-3.5">Food</th>
                       <th className="p-3.5">Stage Talent</th>
-                      <th className="p-3.5">Timestamps (Reg / Appr / Gate)</th>
+                      <th className="p-3.5">Timestamps (Reg / Appr / Gate / Dinner)</th>
                       <th className="p-3.5">Payment</th>
                       <th className="p-3.5">Entry Pass</th>
                       <th className="p-3.5 text-right">Actions</th>
@@ -1387,8 +1418,32 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <td className="p-3.5 font-mono font-bold text-[#6D28D9] whitespace-nowrap">
                             {reg.normalized_roll_number}
                           </td>
-                          <td className="p-3.5 font-bold text-[#29243A] whitespace-nowrap">
-                            {reg.full_name}
+                          <td className="p-3.5 whitespace-nowrap">
+                            <div className="flex items-center gap-2.5">
+                              {reg.identity_photo_url ? (
+                                <img
+                                  src={reg.identity_photo_url}
+                                  alt={reg.full_name}
+                                  onClick={() =>
+                                    setViewingStudentPhoto({
+                                      url: reg.identity_photo_url!,
+                                      name: reg.full_name,
+                                      roll: reg.normalized_roll_number,
+                                    })
+                                  }
+                                  className="w-9 h-9 rounded-xl object-cover border border-[#E8E2D9] shadow-xs cursor-pointer hover:scale-110 transition-transform shrink-0"
+                                  title="Click to view full photo"
+                                />
+                              ) : (
+                                <div className="w-9 h-9 rounded-xl bg-[#FFF0D9] border border-[#E8E2D9] flex items-center justify-center text-[#E99A20] text-xs font-bold shrink-0">
+                                  {reg.full_name.charAt(0).toUpperCase()}
+                                </div>
+                              )}
+                              <div>
+                                <span className="font-bold text-[#29243A] block">{reg.full_name}</span>
+                                <span className="text-[10px] text-[#6B655D]">{reg.contact_number}</span>
+                              </div>
+                            </div>
                           </td>
                           <td className="p-3.5 whitespace-nowrap text-[#29243A]">{reg.academic_year}</td>
                           <td className="p-3.5 whitespace-nowrap">
@@ -1410,11 +1465,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           </td>
                           <td className="p-3.5 text-[10px] space-y-0.5 whitespace-nowrap">
                             <div className="flex items-center gap-1.5 text-[#29243A]">
-                              <span className="font-bold text-[#6B655D] w-8">Reg:</span>
+                              <span className="font-bold text-[#6B655D] w-11">Reg:</span>
                               <span>{formatKolkataDateTime(reg.created_at)}</span>
                             </div>
                             <div className="flex items-center gap-1.5">
-                              <span className="font-bold text-[#6B655D] w-8">Appr:</span>
+                              <span className="font-bold text-[#6B655D] w-11">Appr:</span>
                               <span
                                 className={
                                   reg.payment?.verified_at
@@ -1432,7 +1487,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               </span>
                             </div>
                             <div className="flex items-center gap-1.5">
-                              <span className="font-bold text-[#6B655D] w-8">Gate:</span>
+                              <span className="font-bold text-[#6B655D] w-11">Gate:</span>
                               <span
                                 className={
                                   reg.pass?.redeemed_at
@@ -1447,6 +1502,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   : reg.pass?.status === 'USED'
                                   ? 'Scanned'
                                   : 'Not scanned'}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-bold text-[#6B655D] w-11">Dinner:</span>
+                              <span
+                                className={
+                                  reg.pass?.dinner_redeemed_at
+                                    ? 'text-[#E99A20] font-bold'
+                                    : 'text-[#6B655D]'
+                                }
+                              >
+                                {reg.pass?.dinner_redeemed_at
+                                  ? formatKolkataDateTime(reg.pass.dinner_redeemed_at)
+                                  : 'Not claimed'}
                               </span>
                             </div>
                           </td>
@@ -1510,6 +1579,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 >
                                   <RotateCcw className="w-2.5 h-2.5" />
                                   <span>Re-use QR</span>
+                                </button>
+                              )}
+
+                              {reg.pass?.dinner_redeemed_at && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleResetDinnerScan(reg.pass!.id, reg.full_name)}
+                                  className="px-2 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-[#B45309] border border-amber-200 text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer"
+                                  title="Reset dinner coupon so student can claim meal"
+                                >
+                                  <Utensils className="w-2.5 h-2.5" />
+                                  <span>Reset Dinner</span>
                                 </button>
                               )}
 
@@ -2718,6 +2799,32 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </button>
             </div>
 
+            {/* Student Verified Identity Photo Card in Modal */}
+            {selectedReg.identity_photo_url && (
+              <div className="flex items-center gap-4 p-3.5 bg-[#FFFCF5] rounded-2xl border border-[#E8E2D9] shadow-xs">
+                <img
+                  src={selectedReg.identity_photo_url}
+                  alt={selectedReg.full_name}
+                  onClick={() =>
+                    setViewingStudentPhoto({
+                      url: selectedReg.identity_photo_url!,
+                      name: selectedReg.full_name,
+                      roll: selectedReg.normalized_roll_number,
+                    })
+                  }
+                  className="w-20 h-20 rounded-2xl object-cover border-2 border-[#6D28D9] shadow-xs cursor-pointer hover:scale-105 transition-transform"
+                  title="Click to view full photo"
+                />
+                <div className="space-y-1">
+                  <span className="text-[10px] uppercase font-bold text-[#6D28D9] bg-purple-50 px-2.5 py-0.5 rounded-full border border-purple-200 inline-block">
+                    Verified Identity Photo
+                  </span>
+                  <h4 className="font-bold text-sm text-[#29243A]">{selectedReg.full_name}</h4>
+                  <p className="text-[11px] text-[#6B655D]">Click image to inspect high-resolution selfie</p>
+                </div>
+              </div>
+            )}
+
             <div className="space-y-2.5 text-xs">
               <div className="flex justify-between py-1 border-b border-[#E8E2D9]">
                 <span className="text-[#6B655D]">Full Name:</span>
@@ -2786,6 +2893,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </span>
               </div>
               <div className="flex justify-between py-1 border-b border-[#E8E2D9]">
+                <span className="text-[#6B655D]">Dinner Coupon Scan Timestamp:</span>
+                <span
+                  className={
+                    selectedReg.pass?.dinner_redeemed_at
+                      ? 'text-[#E99A20] font-bold'
+                      : 'text-[#6B655D]'
+                  }
+                >
+                  {selectedReg.pass?.dinner_redeemed_at
+                    ? formatKolkataDateTime(selectedReg.pass.dinner_redeemed_at)
+                    : 'Not claimed yet'}
+                </span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-[#E8E2D9]">
                 <span className="text-[#6B655D]">Fee Amount:</span>
                 <span className="font-black text-[#6D28D9]">
                   {formatINR(selectedReg.expected_amount_minor_units, selectedReg.currency)}
@@ -2839,7 +2960,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
 
             {/* Quick Actions in Detail Modal */}
-            <div className="flex items-center gap-2 pt-2">
+            <div className="flex items-center gap-2 pt-2 flex-wrap">
               <button
                 type="button"
                 onClick={() => {
@@ -2850,7 +2971,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 className="flex-1 py-2 rounded-xl bg-[#FFF0D9] hover:bg-[#FFE6C2] text-[#6D28D9] font-bold text-xs border border-[#E8E2D9] flex items-center justify-center gap-1 cursor-pointer"
               >
                 <Edit3 className="w-3.5 h-3.5" />
-                <span>Edit Registration</span>
+                <span>Edit Details</span>
               </button>
 
               {selectedReg.pass?.status === 'USED' && (
@@ -2860,10 +2981,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     handleReactivatePass(selectedReg.pass!.id, selectedReg.full_name);
                     setSelectedReg(null);
                   }}
-                  className="flex-1 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-[#15803D] font-bold text-xs border border-emerald-200 flex items-center justify-center gap-1 cursor-pointer"
+                  className="px-3 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-[#15803D] font-bold text-xs border border-emerald-200 flex items-center justify-center gap-1 cursor-pointer"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
-                  <span>Re-use QR Pass</span>
+                  <span>Re-use Gate QR</span>
+                </button>
+              )}
+
+              {selectedReg.pass?.dinner_redeemed_at && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleResetDinnerScan(selectedReg.pass!.id, selectedReg.full_name);
+                    setSelectedReg(null);
+                  }}
+                  className="px-3 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-[#B45309] font-bold text-xs border border-amber-200 flex items-center justify-center gap-1 cursor-pointer"
+                >
+                  <Utensils className="w-3.5 h-3.5" />
+                  <span>Reset Dinner</span>
                 </button>
               )}
 
@@ -3017,6 +3152,58 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
         </div>
       )}
+
+      {/* ----------------- STUDENT IDENTITY PHOTO LIGHTBOX MODAL ----------------- */}
+      {viewingStudentPhoto && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white border border-[#E8E2D9] rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4 flex flex-col items-center">
+            <div className="flex items-center justify-between w-full pb-3 border-b border-[#E8E2D9]">
+              <div>
+                <h3 className="text-base font-bold text-[#29243A]">Verified Student Photo</h3>
+                <p className="text-xs text-[#6B655D]">
+                  {viewingStudentPhoto.name} ({viewingStudentPhoto.roll})
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setViewingStudentPhoto(null)}
+                className="p-1.5 rounded-xl hover:bg-[#FFF0D9] text-[#6B655D] hover:text-[#29243A] cursor-pointer"
+              >
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="w-full aspect-square rounded-2xl overflow-hidden bg-black/5 border-2 border-[#6D28D9] flex items-center justify-center shadow-inner">
+              <img
+                src={viewingStudentPhoto.url}
+                alt={viewingStudentPhoto.name}
+                className="w-full h-full object-cover"
+              />
+            </div>
+
+            <div className="flex items-center justify-between w-full pt-1">
+              <a
+                href={viewingStudentPhoto.url}
+                target="_blank"
+                rel="noreferrer"
+                download={`photo-${viewingStudentPhoto.roll}.jpg`}
+                className="text-xs text-[#6D28D9] hover:underline flex items-center gap-1.5 font-bold cursor-pointer"
+              >
+                <Download className="w-4 h-4" />
+                <span>Download Photo</span>
+              </a>
+              <button
+                type="button"
+                onClick={() => setViewingStudentPhoto(null)}
+                className="px-4 py-2 rounded-xl bg-[#6D28D9] hover:bg-[#5B21B6] text-white font-bold text-xs shadow-xs cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+

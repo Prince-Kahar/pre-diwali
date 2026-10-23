@@ -16,6 +16,7 @@ import {
   AuthResult,
   AcademicYear,
   FoodPreference,
+  ScanType,
 } from '../types';
 import { normalizeRollNumber, normalizeContactNumber, registrationSchema, manualPaymentClaimSchema, formatRollWithCoursePrefix } from '../lib/validation';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
@@ -577,14 +578,10 @@ class PreDiwaliDataStore {
 
     // 3. Normalized Roll Number Check with Course Prefix (IT or DS)
     const normalizedRoll = formatRollWithCoursePrefix(parsed.roll_number, parsed.academic_year);
-    const strippedRoll = parsed.roll_number.trim().toUpperCase().replace(/^(IT|DS)[-_]?/i, '');
 
+    // Duplicate roll number is strictly checked for the same course prefix (IT2021 vs DS2021 are distinct students)
     const existing = this.registrations.find(
-      (r) =>
-        r.event_id === this.event.id &&
-        (r.normalized_roll_number === normalizedRoll ||
-          r.normalized_roll_number === strippedRoll ||
-          r.normalized_roll_number.replace(/^(IT|DS)[-_]?/i, '') === strippedRoll)
+      (r) => r.event_id === this.event.id && r.normalized_roll_number === normalizedRoll
     );
 
     if (existing) {
@@ -617,6 +614,7 @@ class PreDiwaliDataStore {
       expected_amount_minor_units: this.event.registration_fee_minor_units,
       currency: this.event.currency,
       performance_talent: input.performance_talent,
+      identity_photo_url: input.identity_photo_url,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
@@ -640,11 +638,32 @@ class PreDiwaliDataStore {
           expected_amount_minor_units: newReg.expected_amount_minor_units,
           currency: newReg.currency,
           performance_talent: newReg.performance_talent || null,
+          identity_photo_url: newReg.identity_photo_url || null,
           created_at: newReg.created_at,
           updated_at: newReg.updated_at,
         });
-      } catch (err) {
-        console.warn('Supabase registration insert sync notice:', err);
+      } catch {
+        // Fallback in case identity_photo_url column has not been added to remote DB yet
+        try {
+          await supabase.from('registrations').insert({
+            id: newReg.id,
+            event_id: newReg.event_id,
+            full_name: newReg.full_name,
+            academic_year: newReg.academic_year,
+            food_preference: newReg.food_preference,
+            contact_number: newReg.contact_number,
+            normalized_roll_number: newReg.normalized_roll_number,
+            consent_agreed: newReg.consent_agreed,
+            payment_status: newReg.payment_status,
+            expected_amount_minor_units: newReg.expected_amount_minor_units,
+            currency: newReg.currency,
+            performance_talent: newReg.performance_talent || null,
+            created_at: newReg.created_at,
+            updated_at: newReg.updated_at,
+          });
+        } catch (err2) {
+          console.warn('Supabase registration insert sync notice:', err2);
+        }
       }
     }
 
@@ -658,33 +677,70 @@ class PreDiwaliDataStore {
     return this.registrations.find((r) => r.id === id);
   }
 
-  public getRegistrationByRollNumber(rollNumber: string): Registration | undefined {
+  public getRegistrationByRollNumber(rollNumber: string, courseFilter?: string): Registration | undefined {
     const clean = normalizeRollNumber(rollNumber);
     if (!clean) return undefined;
 
-    // 1. Direct exact match (e.g. 'IT2021' === 'IT2021', or '2021' === '2021')
+    // 1. If explicit course or department provided (e.g. 'IT' or 'DS')
+    if (courseFilter && courseFilter !== 'ALL') {
+      const isIT = courseFilter.includes('IT');
+      const isDS = courseFilter.includes('DS') || courseFilter.includes('Data Science');
+      const prefix = isIT ? 'IT' : isDS ? 'DS' : '';
+      const stripped = clean.replace(/^(IT|DS)[-_]?/i, '');
+      const targetRoll = prefix ? `${prefix}${stripped}` : clean;
+      const exactMatch = this.registrations.find((r) => r.normalized_roll_number === targetRoll);
+      if (exactMatch) return exactMatch;
+    }
+
+    // 2. Direct exact match (e.g. 'IT2021' or 'DS2021')
     let found = this.registrations.find((r) => r.normalized_roll_number === clean);
     if (found) return found;
 
-    // 2. Student entered just number '2021', match prefixed 'IT2021' or 'DS2021'
-    found = this.registrations.find(
-      (r) => r.normalized_roll_number === `IT${clean}` || r.normalized_roll_number === `DS${clean}`
-    );
-    if (found) return found;
-
-    // 3. Student entered with dashes/prefix 'IT-2021' or 'DS-2021' or without
-    const stripped = clean.replace(/^(IT|DS)[-_]?/i, '');
-    if (stripped) {
-      found = this.registrations.find(
-        (r) =>
-          r.normalized_roll_number === stripped ||
-          r.normalized_roll_number === `IT${stripped}` ||
-          r.normalized_roll_number === `DS${stripped}`
-      );
+    // 3. User entered prefix with separator (e.g. 'IT-2021', 'DS 2021')
+    const itMatch = clean.match(/^IT[-_]?(\w+)$/i);
+    if (itMatch) {
+      found = this.registrations.find((r) => r.normalized_roll_number === `IT${itMatch[1]}`);
+      if (found) return found;
+    }
+    const dsMatch = clean.match(/^DS[-_]?(\w+)$/i);
+    if (dsMatch) {
+      found = this.registrations.find((r) => r.normalized_roll_number === `DS${dsMatch[1]}`);
       if (found) return found;
     }
 
+    // 4. Raw numeric (e.g. '2021') without course prefix:
+    const stripped = clean.replace(/^(IT|DS)[-_]?/i, '');
+    const matches = this.registrations.filter(
+      (r) =>
+        r.normalized_roll_number === `IT${stripped}` ||
+        r.normalized_roll_number === `DS${stripped}` ||
+        r.normalized_roll_number === stripped
+    );
+
+    // If exactly one course has this roll number, safely return it!
+    if (matches.length === 1) return matches[0];
+
+    // If multiple students match (both IT2021 and DS2021 exist), do NOT randomly pick one!
+    // Returning undefined will trigger the multi-record selector modal so the student picks their exact department.
     return undefined;
+  }
+
+  // Returns all matching registrations for a roll number (e.g. returns both IT2021 & DS2021 if ambiguous)
+  public getRegistrationsByRollNumber(rollNumber: string): Registration[] {
+    const clean = normalizeRollNumber(rollNumber);
+    if (!clean) return [];
+
+    // Exact match
+    const exact = this.registrations.filter((r) => r.normalized_roll_number === clean);
+    if (exact.length > 0) return exact;
+
+    const stripped = clean.replace(/^(IT|DS)[-_]?/i, '');
+    return this.registrations.filter(
+      (r) =>
+        r.normalized_roll_number === `IT${stripped}` ||
+        r.normalized_roll_number === `DS${stripped}` ||
+        r.normalized_roll_number === stripped
+    );
   }
 
   public getPaymentForRegistration(regId: string): PaymentRecord | undefined {
@@ -1113,6 +1169,7 @@ class PreDiwaliDataStore {
       contact_number: string;
       food_preference: FoodPreference;
       performance_talent?: string;
+      identity_photo_url?: string;
     }
   ): Promise<Registration> {
     const admin = this.profiles.find((p) => p.id === adminId && p.role === 'ADMIN');
@@ -1130,6 +1187,9 @@ class PreDiwaliDataStore {
     reg.contact_number = cleanPhone;
     reg.food_preference = updates.food_preference;
     reg.performance_talent = updates.performance_talent ? updates.performance_talent.trim() : undefined;
+    if (updates.identity_photo_url !== undefined) {
+      reg.identity_photo_url = updates.identity_photo_url;
+    }
     reg.updated_at = new Date().toISOString();
 
     this.addAuditLog(adminId, 'UPDATE_STUDENT', 'registration', registrationId, `Admin edited details for ${prefixedRoll}`);
@@ -1147,6 +1207,7 @@ class PreDiwaliDataStore {
             contact_number: reg.contact_number,
             food_preference: reg.food_preference,
             performance_talent: reg.performance_talent,
+            identity_photo_url: reg.identity_photo_url || null,
             updated_at: reg.updated_at,
           })
           .eq('id', registrationId);
@@ -1158,19 +1219,60 @@ class PreDiwaliDataStore {
     return reg;
   }
 
+  // Reactivate / Reset Dinner Scan status for a student (allows second dinner if approved)
+  public async reactivateDinnerScanAdmin(
+    passId: string,
+    adminId: string,
+    reason?: string
+  ): Promise<EntryPass> {
+    const admin = this.profiles.find((p) => p.id === adminId && p.role === 'ADMIN');
+    if (!admin) throw new Error('Unauthorized');
+
+    const pass = this.passes.find((p) => p.id === passId);
+    if (!pass) throw new Error('Pass not found');
+
+    pass.dinner_redeemed_at = undefined;
+    pass.dinner_redeemed_by = undefined;
+    pass.dinner_redeemed_by_name = undefined;
+
+    this.addAuditLog(
+      adminId,
+      'RESET_DINNER_SCAN',
+      'entry_pass',
+      passId,
+      reason || 'Admin reset dinner meal redemption status'
+    );
+    this.persist();
+
+    if (isSupabaseConfigured && supabase) {
+      try {
+        await supabase
+          .from('entry_passes')
+          .update({ dinner_redeemed_at: null })
+          .eq('id', passId);
+      } catch (err) {
+        console.warn('Supabase reset dinner scan sync notice:', err);
+      }
+    }
+
+    return pass;
+  }
+
   // -------------------------------------------------------------------------
-  // STRICT ATOMIC ONE-TIME QR SCAN REDEMPTION
+  // STRICT ATOMIC ONE-TIME QR SCAN REDEMPTION (ENTRY GATE & DINNER MODES)
   // -------------------------------------------------------------------------
   public async redeemEntryPass(
     presentedTokenOrHash: string,
     staffUserId: string,
-    requestId?: string
+    requestId?: string,
+    scanType: ScanType = 'ENTRY'
   ): Promise<ScanVerificationResult> {
     const staff = this.profiles.find((p) => p.id === staffUserId);
     if (!staff || !staff.is_active) {
       return {
         success: false,
         status: 'INVALID_PASS',
+        scan_type: scanType,
         message: 'Unauthorized: Staff member is not recognized or is inactive',
       };
     }
@@ -1179,6 +1281,7 @@ class PreDiwaliDataStore {
       return {
         success: false,
         status: 'PASS_CANCELLED',
+        scan_type: scanType,
         message: 'Event entry is currently closed by the administration',
       };
     }
@@ -1220,7 +1323,6 @@ class PreDiwaliDataStore {
               this.passes.push(pass);
             }
           } else {
-            // Check by roll number in Supabase
             const normRoll = normalizeRollNumber(cleanToken);
             const { data: dbReg } = await supabase
               .from('registrations')
@@ -1256,6 +1358,7 @@ class PreDiwaliDataStore {
         this.scans.unshift({
           id: `scan-${Date.now()}`,
           event_id: this.event.id,
+          scan_type: scanType,
           staff_user_id: staffUserId,
           staff_name: staff.display_name,
           scan_result: 'INVALID_PASS',
@@ -1265,24 +1368,11 @@ class PreDiwaliDataStore {
         });
         this.persist();
 
-        if (isSupabaseConfigured && supabase) {
-          try {
-            await supabase.from('entry_scans').insert({
-              event_id: this.event.id,
-              staff_user_id: staffUserId,
-              scan_result: 'INVALID_PASS',
-              request_id: requestId,
-              reason_code: 'TOKEN_NOT_FOUND',
-            });
-          } catch (e) {
-            console.warn('Supabase log invalid scan notice:', e);
-          }
-        }
-
         return {
           success: false,
           status: 'INVALID_PASS',
-          message: 'ENTRY DENIED — INVALID PASS',
+          scan_type: scanType,
+          message: 'DENIED — INVALID QR PASS (CREDENTIAL NOT FOUND)',
         };
       }
 
@@ -1310,61 +1400,18 @@ class PreDiwaliDataStore {
         return {
           success: false,
           status: 'INVALID_PASS',
-          message: 'ENTRY DENIED — INVALID PASS (NO REGISTRATION)',
+          scan_type: scanType,
+          message: 'DENIED — NO REGISTRATION LINKED TO THIS PASS',
         };
       }
 
-      // Case 2: ALREADY USED
-      if (pass.status === 'USED') {
-        const prevStaff = this.profiles.find((p) => p.id === pass.redeemed_by);
-
-        this.scans.unshift({
-          id: `scan-${Date.now()}`,
-          event_id: this.event.id,
-          pass_id: pass.id,
-          staff_user_id: staffUserId,
-          staff_name: staff.display_name,
-          scan_result: 'ALREADY_USED',
-          scanned_at: new Date().toISOString(),
-          request_id: requestId,
-          reason_code: 'PREVIOUSLY_REDEEMED',
-          student_name: reg.full_name,
-          roll_number: reg.normalized_roll_number,
-        });
-        this.persist();
-
-        if (isSupabaseConfigured && supabase) {
-          try {
-            await supabase.from('entry_scans').insert({
-              event_id: this.event.id,
-              pass_id: pass.id,
-              staff_user_id: staffUserId,
-              scan_result: 'ALREADY_USED',
-              request_id: requestId,
-              reason_code: 'PREVIOUSLY_REDEEMED',
-            });
-          } catch (e) {
-            console.warn('Supabase log duplicate scan notice:', e);
-          }
-        }
-
-        return {
-          success: false,
-          status: 'ALREADY_USED',
-          message: 'ENTRY DENIED — QR CODE ALREADY USED',
-          student_name: reg.full_name,
-          roll_number: reg.normalized_roll_number,
-          previous_scan_at: pass.redeemed_at,
-          previous_staff_name: prevStaff?.display_name || pass.redeemed_by_name || 'Staff Member',
-        };
-      }
-
-      // Case 3: CANCELLED OR REVOKED
+      // Case 2: CANCELLED OR REVOKED
       if (pass.status === 'REVOKED' || pass.status === 'CANCELLED' || reg.cancelled_at) {
         this.scans.unshift({
           id: `scan-${Date.now()}`,
           event_id: this.event.id,
           pass_id: pass.id,
+          scan_type: scanType,
           staff_user_id: staffUserId,
           staff_name: staff.display_name,
           scan_result: 'PASS_CANCELLED',
@@ -1373,24 +1420,28 @@ class PreDiwaliDataStore {
           reason_code: `PASS_${pass.status}`,
           student_name: reg.full_name,
           roll_number: reg.normalized_roll_number,
+          food_preference: reg.food_preference,
         });
         this.persist();
 
         return {
           success: false,
           status: 'PASS_CANCELLED',
-          message: 'ENTRY DENIED — PASS CANCELLED',
+          scan_type: scanType,
+          message: 'ENTRY DENIED — PASS CANCELLED OR REVOKED',
           student_name: reg.full_name,
           roll_number: reg.normalized_roll_number,
+          identity_photo_url: reg.identity_photo_url,
         };
       }
 
-      // Case 4: PAYMENT NOT VERIFIED
+      // Case 3: PAYMENT NOT VERIFIED
       if (reg.payment_status !== 'PAID') {
         this.scans.unshift({
           id: `scan-${Date.now()}`,
           event_id: this.event.id,
           pass_id: pass.id,
+          scan_type: scanType,
           staff_user_id: staffUserId,
           staff_name: staff.display_name,
           scan_result: 'PAYMENT_NOT_VERIFIED',
@@ -1399,70 +1450,223 @@ class PreDiwaliDataStore {
           reason_code: `PAYMENT_${reg.payment_status}`,
           student_name: reg.full_name,
           roll_number: reg.normalized_roll_number,
+          food_preference: reg.food_preference,
         });
         this.persist();
 
         return {
           success: false,
           status: 'PAYMENT_NOT_VERIFIED',
-          message: 'ENTRY DENIED — PAYMENT NOT VERIFIED',
+          scan_type: scanType,
+          message: 'ENTRY DENIED — PAYMENT NOT VERIFIED BY ADMIN',
           student_name: reg.full_name,
           roll_number: reg.normalized_roll_number,
+          identity_photo_url: reg.identity_photo_url,
         };
       }
 
-      // Case 5: ENTRY APPROVED — ATOMIC ONE-TIME REDEMPTION
       const now = new Date().toISOString();
-      pass.status = 'USED';
-      pass.redeemed_at = now;
-      pass.redeemed_by = staffUserId;
-      pass.redeemed_by_name = staff.display_name;
 
-      this.scans.unshift({
-        id: `scan-${Date.now()}`,
-        event_id: this.event.id,
-        pass_id: pass.id,
-        staff_user_id: staffUserId,
-        staff_name: staff.display_name,
-        scan_result: 'ENTRY_APPROVED',
-        scanned_at: now,
-        request_id: requestId,
-        student_name: reg.full_name,
-        roll_number: reg.normalized_roll_number,
-      });
+      // =========================================================================
+      // MODE 1: ENTRY GATE SCAN
+      // =========================================================================
+      if (scanType === 'ENTRY') {
+        // If already scanned at entrance gate
+        if (pass.redeemed_at) {
+          const prevStaff = this.profiles.find((p) => p.id === pass.redeemed_by);
 
-      this.persist();
-
-      // Cloud sync to Supabase
-      if (isSupabaseConfigured && supabase) {
-        try {
-          await supabase.from('entry_passes').update({
-            status: 'USED',
-            redeemed_at: now,
-            updated_at: now,
-          }).eq('id', pass.id);
-
-          await supabase.from('entry_scans').insert({
+          this.scans.unshift({
+            id: `scan-${Date.now()}`,
             event_id: this.event.id,
             pass_id: pass.id,
+            scan_type: 'ENTRY',
             staff_user_id: staffUserId,
-            scan_result: 'ENTRY_APPROVED',
+            staff_name: staff.display_name,
+            scan_result: 'ALREADY_USED',
+            scanned_at: now,
             request_id: requestId,
+            reason_code: 'PREVIOUSLY_REDEEMED_ENTRY',
+            student_name: reg.full_name,
+            roll_number: reg.normalized_roll_number,
+            food_preference: reg.food_preference,
           });
-        } catch (e) {
-          console.warn('Supabase scan sync exception:', e);
+          this.persist();
+
+          return {
+            success: false,
+            status: 'ALREADY_USED',
+            scan_type: 'ENTRY',
+            message: 'ENTRY DENIED — QR CODE ALREADY USED AT MAIN GATE',
+            student_name: reg.full_name,
+            roll_number: reg.normalized_roll_number,
+            academic_year: reg.academic_year,
+            food_preference: reg.food_preference,
+            performance_talent: reg.performance_talent,
+            identity_photo_url: reg.identity_photo_url,
+            previous_scan_at: pass.redeemed_at,
+            previous_staff_name: prevStaff?.display_name || pass.redeemed_by_name || 'Gate Volunteer',
+          };
         }
+
+        // ATOMIC ENTRY APPROVED
+        pass.status = 'USED';
+        pass.redeemed_at = now;
+        pass.redeemed_by = staffUserId;
+        pass.redeemed_by_name = staff.display_name;
+
+        this.scans.unshift({
+          id: `scan-${Date.now()}`,
+          event_id: this.event.id,
+          pass_id: pass.id,
+          scan_type: 'ENTRY',
+          staff_user_id: staffUserId,
+          staff_name: staff.display_name,
+          scan_result: 'ENTRY_APPROVED',
+          scanned_at: now,
+          request_id: requestId,
+          student_name: reg.full_name,
+          roll_number: reg.normalized_roll_number,
+          food_preference: reg.food_preference,
+        });
+        this.persist();
+
+        if (isSupabaseConfigured && supabase) {
+          try {
+            await supabase.from('entry_passes').update({
+              status: 'USED',
+              redeemed_at: now,
+              updated_at: now,
+            }).eq('id', pass.id);
+
+            await supabase.from('entry_scans').insert({
+              event_id: this.event.id,
+              pass_id: pass.id,
+              staff_user_id: staffUserId,
+              scan_result: 'ENTRY_APPROVED',
+              request_id: requestId,
+            });
+          } catch (e) {
+            console.warn('Supabase scan sync exception:', e);
+          }
+        }
+
+        return {
+          success: true,
+          status: 'ENTRY_APPROVED',
+          scan_type: 'ENTRY',
+          message: 'ENTRY APPROVED — WELCOME TO PRE-DIWALI!',
+          student_name: reg.full_name,
+          roll_number: reg.normalized_roll_number,
+          academic_year: reg.academic_year,
+          food_preference: reg.food_preference,
+          performance_talent: reg.performance_talent,
+          identity_photo_url: reg.identity_photo_url,
+          scanned_at: now,
+        };
       }
 
+      // =========================================================================
+      // MODE 2: DINNER / FOOD SCAN
+      // =========================================================================
+      if (scanType === 'DINNER') {
+        // If dinner already claimed
+        if (pass.dinner_redeemed_at) {
+          const prevDinnerStaff = this.profiles.find((p) => p.id === pass.dinner_redeemed_by);
+
+          this.scans.unshift({
+            id: `scan-${Date.now()}`,
+            event_id: this.event.id,
+            pass_id: pass.id,
+            scan_type: 'DINNER',
+            staff_user_id: staffUserId,
+            staff_name: staff.display_name,
+            scan_result: 'ALREADY_CLAIMED_DINNER',
+            scanned_at: now,
+            request_id: requestId,
+            reason_code: 'PREVIOUSLY_CLAIMED_DINNER',
+            student_name: reg.full_name,
+            roll_number: reg.normalized_roll_number,
+            food_preference: reg.food_preference,
+          });
+          this.persist();
+
+          return {
+            success: false,
+            status: 'ALREADY_CLAIMED_DINNER',
+            scan_type: 'DINNER',
+            message: `DINNER DENIED — ${reg.food_preference.toUpperCase()} MEAL ALREADY CLAIMED`,
+            student_name: reg.full_name,
+            roll_number: reg.normalized_roll_number,
+            academic_year: reg.academic_year,
+            food_preference: reg.food_preference,
+            performance_talent: reg.performance_talent,
+            identity_photo_url: reg.identity_photo_url,
+            previous_scan_at: pass.dinner_redeemed_at,
+            previous_staff_name: prevDinnerStaff?.display_name || pass.dinner_redeemed_by_name || 'Dinner Volunteer',
+          };
+        }
+
+        // ATOMIC DINNER APPROVED
+        pass.dinner_redeemed_at = now;
+        pass.dinner_redeemed_by = staffUserId;
+        pass.dinner_redeemed_by_name = staff.display_name;
+
+        this.scans.unshift({
+          id: `scan-${Date.now()}`,
+          event_id: this.event.id,
+          pass_id: pass.id,
+          scan_type: 'DINNER',
+          staff_user_id: staffUserId,
+          staff_name: staff.display_name,
+          scan_result: 'DINNER_APPROVED',
+          scanned_at: now,
+          request_id: requestId,
+          student_name: reg.full_name,
+          roll_number: reg.normalized_roll_number,
+          food_preference: reg.food_preference,
+        });
+        this.persist();
+
+        if (isSupabaseConfigured && supabase) {
+          try {
+            await supabase.from('entry_passes').update({
+              dinner_redeemed_at: now,
+              updated_at: now,
+            }).eq('id', pass.id);
+
+            await supabase.from('entry_scans').insert({
+              event_id: this.event.id,
+              pass_id: pass.id,
+              staff_user_id: staffUserId,
+              scan_result: 'DINNER_APPROVED',
+              request_id: requestId,
+            });
+          } catch (e) {
+            console.warn('Supabase dinner scan sync exception:', e);
+          }
+        }
+
+        return {
+          success: true,
+          status: 'DINNER_APPROVED',
+          scan_type: 'DINNER',
+          message: `DINNER APPROVED — PROVIDE 1x ${reg.food_preference.toUpperCase()} DINNER`,
+          student_name: reg.full_name,
+          roll_number: reg.normalized_roll_number,
+          academic_year: reg.academic_year,
+          food_preference: reg.food_preference,
+          performance_talent: reg.performance_talent,
+          identity_photo_url: reg.identity_photo_url,
+          scanned_at: now,
+        };
+      }
+
+      // Default fallback
       return {
-        success: true,
-        status: 'ENTRY_APPROVED',
-        message: 'ENTRY APPROVED — VALID FOR THIS ENTRY',
-        student_name: reg.full_name,
-        roll_number: reg.normalized_roll_number,
-        academic_year: reg.academic_year,
-        food_preference: reg.food_preference,
-        scanned_at: now,
+        success: false,
+        status: 'INVALID_PASS',
+        scan_type: scanType,
+        message: 'Invalid scan request',
       };
     } finally {
       releaseLock();
@@ -1673,6 +1877,7 @@ class PreDiwaliDataStore {
             expected_amount_minor_units: 30000,
             currency: row.currency || 'INR',
             performance_talent: row.performance_talent || undefined,
+            identity_photo_url: row.identity_photo_url || undefined,
             created_at: row.created_at,
             updated_at: row.updated_at,
           });
@@ -1730,6 +1935,8 @@ class PreDiwaliDataStore {
             issued_at: row.issued_at,
             redeemed_at: row.redeemed_at || undefined,
             redeemed_by: row.redeemed_by || undefined,
+            dinner_redeemed_at: row.dinner_redeemed_at || undefined,
+            dinner_redeemed_by: row.dinner_redeemed_by || undefined,
             revoked_at: row.revoked_at || undefined,
             replacement_of_pass_id: row.replacement_of_pass_id || undefined,
           });
