@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { normalizeRollNumber, normalizeContactNumber, registrationSchema, manualPaymentClaimSchema } from '../src/lib/validation';
+import { normalizeRollNumber, normalizeContactNumber, registrationSchema, manualPaymentClaimSchema, formatRollWithCoursePrefix } from '../src/lib/validation';
 import { hashToken, generatePassToken, maskContactNumber, formatINR } from '../src/lib/crypto';
 import { dataService } from '../src/services/dataService';
 
@@ -157,11 +157,15 @@ describe('Pre-Diwali Celebration Core Logic & Security Tests', () => {
         consent_agreed: true,
       };
 
-      // First registration should succeed
+      // First registration should succeed with course prefix (DS for Data Science)
       const reg1 = await dataService.registerStudent(regInput);
       expect(reg1.alreadyRegistered).toBe(false);
-      expect(reg1.registration.normalized_roll_number).toBe(normalizeRollNumber(roll));
+      expect(reg1.registration.normalized_roll_number).toBe(formatRollWithCoursePrefix(roll, regInput.academic_year));
       expect(reg1.registration.payment_status).toBe('PENDING');
+
+      // Student can find/login with their own raw roll number
+      const lookedUp = dataService.getRegistrationByRollNumber(roll);
+      expect(lookedUp?.id).toBe(reg1.registration.id);
 
       // Duplicate registration attempt with same roll (different casing and spaces)
       const duplicateInput = {

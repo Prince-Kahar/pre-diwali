@@ -90,8 +90,13 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
       loadStaffScans();
     });
 
+    const unsubscribeRealtime = dataService.subscribeToRealtimeChanges(() => {
+      loadStaffScans();
+    });
+
     return () => {
       stopCamera();
+      if (unsubscribeRealtime) unsubscribeRealtime();
       window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);

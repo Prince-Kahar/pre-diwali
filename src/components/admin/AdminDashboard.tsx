@@ -133,6 +133,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [pricingErrorMsg, setPricingErrorMsg] = useState<string | null>(null);
 
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
 
   const refreshAll = () => {
     setMetrics(dataService.getDashboardMetrics());
@@ -147,18 +148,36 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const syncAndRefresh = async () => {
     setIsRefreshing(true);
     try {
-      await dataService.initSupabase();
-    } catch {
-      // safe fallback
-    } finally {
+      const res = await dataService.initSupabase();
       refreshAll();
+      if (res && res.success) {
+        setSyncFeedback(`Real-time Supabase sync successful: ${res.registrationsCount} registrations, ${res.paymentsCount} payments verified live.`);
+      } else {
+        setSyncFeedback('Data refreshed from local & cloud store.');
+      }
+    } catch {
+      refreshAll();
+      setSyncFeedback('Data refreshed.');
+    } finally {
       setIsRefreshing(false);
+      setTimeout(() => setSyncFeedback(null), 4000);
     }
   };
 
   useEffect(() => {
     refreshAll();
     syncAndRefresh();
+
+    // Real-time Postgres changes subscription from Supabase
+    const unsubscribe = dataService.subscribeToRealtimeChanges(() => {
+      refreshAll();
+    });
+
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
   }, []);
 
   // Synchronize pricing form when event prop changes
@@ -444,11 +463,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <button
               type="button"
               onClick={syncAndRefresh}
-              className="p-2 rounded-xl bg-[#FFF0D9] hover:bg-[#FFE6C2] text-[#6D28D9] border border-[#E8E2D9] text-xs font-bold transition-all cursor-pointer flex items-center gap-1"
-              title="Sync with Supabase"
+              disabled={isRefreshing}
+              className="p-2 rounded-xl bg-[#FFF0D9] hover:bg-[#FFE6C2] text-[#6D28D9] border border-[#E8E2D9] text-xs font-bold transition-all cursor-pointer flex items-center gap-1 disabled:opacity-60"
+              title="Sync with Supabase in real-time"
             >
               <RefreshCw className={`w-3.5 h-3.5 text-[#E99A20] ${isRefreshing ? 'animate-spin' : ''}`} />
-              <span className="text-[11px]">Sync</span>
+              <span className="text-[11px]">{isRefreshing ? 'Syncing...' : 'Sync'}</span>
             </button>
             <button
               type="button"
@@ -691,10 +711,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <button
             type="button"
             onClick={syncAndRefresh}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-[#FFFCF5] hover:bg-[#FFF0D9] text-[#29243A] text-xs font-semibold border border-[#E8E2D9] transition-colors cursor-pointer"
+            disabled={isRefreshing}
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-[#FFFCF5] hover:bg-[#FFF0D9] text-[#29243A] text-xs font-semibold border border-[#E8E2D9] transition-colors cursor-pointer disabled:opacity-60"
           >
             <RefreshCw className={`w-3.5 h-3.5 text-[#E99A20] ${isRefreshing ? 'animate-spin' : ''}`} />
-            <span>Sync with Supabase</span>
+            <span>{isRefreshing ? 'Syncing with Supabase...' : 'Sync with Supabase'}</span>
           </button>
           <button
             type="button"
@@ -709,6 +730,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       {/* ----------------- IVORY WORKSPACE ----------------- */}
       <section className="flex-1 bg-[#FFFCF5] space-y-6">
+        {/* Real-time Sync Status Notification */}
+        {syncFeedback && (
+          <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs font-bold flex items-center justify-between shadow-xs transition-all">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>{syncFeedback}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSyncFeedback(null)}
+              className="text-emerald-700 hover:text-emerald-900 text-xs ml-2 cursor-pointer font-bold"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
         {/* 1. OVERVIEW TAB */}
         {activeTab === 'OVERVIEW' && (
           <div className="space-y-6">

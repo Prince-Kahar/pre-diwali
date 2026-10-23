@@ -15,9 +15,16 @@ import {
   Role,
   AuthResult,
 } from '../types';
-import { generatePassToken, hashToken, maskContactNumber, hashPassword, hasSqlInjectionPattern } from '../lib/crypto';
-import { normalizeRollNumber, normalizeContactNumber, registrationSchema, manualPaymentClaimSchema } from '../lib/validation';
+import { normalizeRollNumber, normalizeContactNumber, registrationSchema, manualPaymentClaimSchema, formatRollWithCoursePrefix } from '../lib/validation';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import {
+  generatePassToken,
+  hashToken,
+  hashPassword,
+  hasSqlInjectionPattern,
+  formatINR,
+  formatKolkataDateTime,
+} from '../lib/crypto';
 
 export function generateUUID(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -563,10 +570,16 @@ class PreDiwaliDataStore {
       throw new Error('Event capacity has been reached. No more registrations can be accepted.');
     }
 
-    // 3. Normalized Roll Number Check (Strict Server-Side Unique Constraint)
-    const normalizedRoll = normalizeRollNumber(parsed.roll_number);
+    // 3. Normalized Roll Number Check with Course Prefix (IT or DS)
+    const normalizedRoll = formatRollWithCoursePrefix(parsed.roll_number, parsed.academic_year);
+    const strippedRoll = parsed.roll_number.trim().toUpperCase().replace(/^(IT|DS)[-_]?/i, '');
+
     const existing = this.registrations.find(
-      (r) => r.event_id === this.event.id && r.normalized_roll_number === normalizedRoll
+      (r) =>
+        r.event_id === this.event.id &&
+        (r.normalized_roll_number === normalizedRoll ||
+          r.normalized_roll_number === strippedRoll ||
+          r.normalized_roll_number.replace(/^(IT|DS)[-_]?/i, '') === strippedRoll)
     );
 
     if (existing) {
@@ -640,8 +653,32 @@ class PreDiwaliDataStore {
   }
 
   public getRegistrationByRollNumber(rollNumber: string): Registration | undefined {
-    const normalized = normalizeRollNumber(rollNumber);
-    return this.registrations.find((r) => r.normalized_roll_number === normalized);
+    const clean = normalizeRollNumber(rollNumber);
+    if (!clean) return undefined;
+
+    // 1. Direct exact match (e.g. 'IT2021' === 'IT2021', or '2021' === '2021')
+    let found = this.registrations.find((r) => r.normalized_roll_number === clean);
+    if (found) return found;
+
+    // 2. Student entered just number '2021', match prefixed 'IT2021' or 'DS2021'
+    found = this.registrations.find(
+      (r) => r.normalized_roll_number === `IT${clean}` || r.normalized_roll_number === `DS${clean}`
+    );
+    if (found) return found;
+
+    // 3. Student entered with dashes/prefix 'IT-2021' or 'DS-2021' or without
+    const stripped = clean.replace(/^(IT|DS)[-_]?/i, '');
+    if (stripped) {
+      found = this.registrations.find(
+        (r) =>
+          r.normalized_roll_number === stripped ||
+          r.normalized_roll_number === `IT${stripped}` ||
+          r.normalized_roll_number === `DS${stripped}`
+      );
+      if (found) return found;
+    }
+
+    return undefined;
   }
 
   public getPaymentForRegistration(regId: string): PaymentRecord | undefined {
@@ -1474,8 +1511,10 @@ class PreDiwaliDataStore {
     });
   }
 
-  public async initSupabase() {
-    if (!isSupabaseConfigured || !supabase) return;
+  public async initSupabase(): Promise<{ success: boolean; registrationsCount: number; paymentsCount: number }> {
+    if (!isSupabaseConfigured || !supabase) {
+      return { success: false, registrationsCount: this.registrations.length, paymentsCount: this.payments.length };
+    }
     try {
       // 1. Fetch Event Settings from Supabase
       const { data: eventData } = await supabase.from('events').select('*').limit(1).maybeSingle();
@@ -1495,13 +1534,23 @@ class PreDiwaliDataStore {
         if (eventData.registration_fee_minor_units !== 30000) {
           await supabase.from('events').update({ registration_fee_minor_units: 30000 }).eq('id', this.event.id);
         }
-        this.persist();
       }
 
       // 2. Fetch Registrations from Supabase and sync
       const { data: regRows } = await supabase.from('registrations').select('*');
       if (regRows && regRows.length > 0) {
         for (const row of regRows) {
+          // Authoritative Roll formatting: ensure IT or DS prefix in Supabase
+          const prefixedRoll = formatRollWithCoursePrefix(row.normalized_roll_number, row.academic_year);
+          if (row.normalized_roll_number !== prefixedRoll) {
+            row.normalized_roll_number = prefixedRoll;
+            try {
+              await supabase.from('registrations').update({ normalized_roll_number: prefixedRoll }).eq('id', row.id);
+            } catch (e) {
+              console.warn('Roll prefix Supabase update notice:', e);
+            }
+          }
+
           const idx = this.registrations.findIndex((r) => r.id === row.id);
           const mappedReg: Registration = {
             id: row.id,
@@ -1510,7 +1559,7 @@ class PreDiwaliDataStore {
             academic_year: row.academic_year,
             food_preference: row.food_preference,
             contact_number: row.contact_number,
-            normalized_roll_number: row.normalized_roll_number,
+            normalized_roll_number: prefixedRoll,
             consent_agreed: row.consent_agreed ?? true,
             payment_status: row.payment_status || 'PENDING',
             expected_amount_minor_units: 30000,
@@ -1525,7 +1574,6 @@ class PreDiwaliDataStore {
             this.registrations.push(mappedReg);
           }
         }
-        this.persist();
       }
 
       // 3. Fetch Payments from Supabase and sync
@@ -1558,8 +1606,13 @@ class PreDiwaliDataStore {
           } else {
             this.payments.push(mappedPay);
           }
+
+          // Authoritative link: align registration payment_status with payment status
+          const matchingReg = this.registrations.find((r) => r.id === row.registration_id);
+          if (matchingReg && row.status) {
+            matchingReg.payment_status = row.status;
+          }
         }
-        this.persist();
       }
 
       // 4. Fetch Entry Passes from Supabase
@@ -1584,7 +1637,6 @@ class PreDiwaliDataStore {
             this.passes.push(mappedPass);
           }
         }
-        this.persist();
       }
 
       // 5. Fetch Scans from Supabase
@@ -1604,10 +1656,101 @@ class PreDiwaliDataStore {
             });
           }
         }
-        this.persist();
       }
+
+      // 6. Push local registrations missing from Supabase (Bidirectional sync)
+      for (const localReg of this.registrations) {
+        if (!regRows || !regRows.some((r) => r.id === localReg.id)) {
+          try {
+            await supabase.from('registrations').upsert({
+              id: localReg.id,
+              event_id: localReg.event_id,
+              full_name: localReg.full_name,
+              academic_year: localReg.academic_year,
+              food_preference: localReg.food_preference,
+              contact_number: localReg.contact_number,
+              normalized_roll_number: localReg.normalized_roll_number,
+              consent_agreed: localReg.consent_agreed,
+              payment_status: localReg.payment_status,
+              expected_amount_minor_units: localReg.expected_amount_minor_units,
+              currency: localReg.currency,
+              performance_talent: localReg.performance_talent,
+              created_at: localReg.created_at,
+              updated_at: localReg.updated_at,
+            });
+          } catch (e) {
+            console.warn('Bidirectional reg push notice:', e);
+          }
+        }
+      }
+
+      // 7. Push local payments missing from Supabase
+      for (const localPay of this.payments) {
+        if (!payRows || !payRows.some((p) => p.id === localPay.id)) {
+          try {
+            await supabase.from('payments').upsert({
+              id: localPay.id,
+              registration_id: localPay.registration_id,
+              provider: localPay.provider,
+              transaction_reference: localPay.transaction_reference,
+              screenshot_url: localPay.screenshot_url,
+              expected_amount_minor_units: localPay.expected_amount_minor_units,
+              currency: localPay.currency,
+              status: localPay.status,
+              verification_method: localPay.verification_method,
+              verified_by: localPay.verified_by,
+              verified_at: localPay.verified_at,
+              admin_notes: localPay.admin_notes,
+              created_at: localPay.created_at,
+              updated_at: localPay.updated_at,
+            });
+          } catch (e) {
+            console.warn('Bidirectional pay push notice:', e);
+          }
+        }
+      }
+
+      this.persist();
+      return { success: true, registrationsCount: this.registrations.length, paymentsCount: this.payments.length };
     } catch (err) {
-      console.warn('Supabase initial sync notice:', err);
+      console.warn('Supabase sync exception:', err);
+      return { success: false, registrationsCount: this.registrations.length, paymentsCount: this.payments.length };
+    }
+  }
+
+  public subscribeToRealtimeChanges(callback: () => void): (() => void) | undefined {
+    if (!isSupabaseConfigured || !supabase) return undefined;
+    try {
+      const channel = supabase
+        .channel('realtime_event_changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'registrations' }, async () => {
+          await this.initSupabase();
+          callback();
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, async () => {
+          await this.initSupabase();
+          callback();
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'entry_passes' }, async () => {
+          await this.initSupabase();
+          callback();
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'entry_scans' }, async () => {
+          await this.initSupabase();
+          callback();
+        })
+        .subscribe();
+
+      return () => {
+        try {
+          supabase?.removeChannel(channel);
+        } catch {
+          // ignore
+        }
+      };
+    } catch (e) {
+      console.warn('Supabase realtime subscription notice:', e);
+      return undefined;
     }
   }
 }

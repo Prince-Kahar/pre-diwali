@@ -5,6 +5,24 @@ export function normalizeRollNumber(roll: string): string {
   return roll.trim().toUpperCase().replace(/\s+/g, '');
 }
 
+/**
+ * Format Roll Number with Course Prefix:
+ * - 'FY - M.Sc.IT' or 'SY - M.Sc.IT' -> prefixed with 'IT' (e.g. IT2021)
+ * - 'FY - Data Science' or 'SY - Data Science' -> prefixed with 'DS' (e.g. DS2021)
+ */
+export function formatRollWithCoursePrefix(roll: string, academicYear: string): string {
+  const raw = roll.trim().toUpperCase().replace(/\s+/g, '');
+  const isIT = academicYear.includes('IT') || academicYear.includes('M.Sc.IT');
+  const isDS = academicYear.includes('Data Science') || academicYear.includes('DS');
+  const prefix = isIT ? 'IT' : isDS ? 'DS' : '';
+
+  if (!prefix) return raw;
+
+  // Clean away any previous IT/DS prefix or hyphen to prevent duplicate prefixes (e.g. IT-IT2021)
+  const stripped = raw.replace(/^(IT|DS)[-_]?/i, '');
+  return `${prefix}${stripped}`;
+}
+
 // Normalize Contact Number: extracts clean 10-digit Indian mobile number
 export function normalizeContactNumber(contact: string): string {
   const digits = contact.replace(/\D/g, '');

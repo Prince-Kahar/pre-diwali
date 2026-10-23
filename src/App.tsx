@@ -47,9 +47,15 @@ export function App() {
   }, []);
 
   // Handle Roll Number Lookup from Landing Page
-  const handleLookupRollNumber = (roll: string) => {
+  const handleLookupRollNumber = async (roll: string) => {
     setLookupMessage(null);
-    const reg = dataService.getRegistrationByRollNumber(roll);
+    let reg = dataService.getRegistrationByRollNumber(roll);
+
+    // If not found in memory, query live Supabase database
+    if (!reg) {
+      await dataService.initSupabase();
+      reg = dataService.getRegistrationByRollNumber(roll);
+    }
 
     if (!reg) {
       alert(`No registration found for Roll Number "${roll}". Please complete the registration form.`);
