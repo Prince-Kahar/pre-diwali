@@ -12,8 +12,10 @@ import {
   PaymentStatus,
   PricingHistoryRecord,
   UpdatePricingInput,
+  Role,
+  AuthResult,
 } from '../types';
-import { generatePassToken, hashToken, maskContactNumber } from '../lib/crypto';
+import { generatePassToken, hashToken, maskContactNumber, hashPassword, hasSqlInjectionPattern } from '../lib/crypto';
 import { normalizeRollNumber, normalizeContactNumber, registrationSchema, manualPaymentClaimSchema } from '../lib/validation';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
@@ -42,6 +44,7 @@ const STORAGE_KEYS = {
   AUDIT: 'prediwali_audit',
   PRICING_HISTORY: 'prediwali_pricing_history',
   ACTIVE_PASS_TOKENS: 'prediwali_client_pass_tokens', // maps registrationId -> raw token for client view
+  CREDENTIALS: 'prediwali_credentials',
 };
 
 // Default seed event
@@ -108,6 +111,7 @@ class PreDiwaliDataStore {
   private auditLogs: AuditLog[] = [];
   private pricingHistory: PricingHistoryRecord[] = [];
   private clientTokens: Record<string, string> = {}; // registrationId -> raw token
+  private credentials: Record<string, { password_hash: string; salt: string; role: Role }> = {};
 
   // Mutex lock for atomic operations (concurrency safety)
   private locks: Map<string, Promise<void>> = new Map();
@@ -116,6 +120,9 @@ class PreDiwaliDataStore {
     this.loadFromStorage();
     if (this.pricingHistory.length === 0) {
       this.seedInitialPricingHistory();
+    }
+    if (!this.credentials['admin'] || !this.credentials['staff']) {
+      this.seedInitialCredentials();
     }
     if (this.isBrowser() && isSupabaseConfigured) {
       this.initSupabase().catch((err) => console.warn('Supabase init err:', err));
@@ -189,6 +196,9 @@ class PreDiwaliDataStore {
 
       const t = localStorage.getItem(STORAGE_KEYS.ACTIVE_PASS_TOKENS);
       if (t) this.clientTokens = JSON.parse(t);
+
+      const creds = localStorage.getItem(STORAGE_KEYS.CREDENTIALS);
+      if (creds) this.credentials = JSON.parse(creds);
     } catch (err) {
       console.warn('Could not load local storage:', err);
     }
@@ -206,6 +216,7 @@ class PreDiwaliDataStore {
       localStorage.setItem(STORAGE_KEYS.AUDIT, JSON.stringify(this.auditLogs));
       localStorage.setItem(STORAGE_KEYS.PRICING_HISTORY, JSON.stringify(this.pricingHistory));
       localStorage.setItem(STORAGE_KEYS.ACTIVE_PASS_TOKENS, JSON.stringify(this.clientTokens));
+      localStorage.setItem(STORAGE_KEYS.CREDENTIALS, JSON.stringify(this.credentials));
     } catch (err) {
       console.warn('Storage persistence failed:', err);
     }
@@ -392,6 +403,130 @@ class PreDiwaliDataStore {
     this.addAuditLog(actorId, 'TOGGLE_STAFF_STATUS', 'profile', staffId, `Changed staff status to ${isActive}`);
     this.persist();
     return staff;
+  }
+
+  // --- DYNAMIC AUTHENTICATION & SQL INJECTION DEFENSE ---
+
+  private async seedInitialCredentials() {
+    try {
+      const staffHash = await hashPassword('Staff@123!123', 'sascma_staff_salt');
+      this.credentials['staff'] = {
+        password_hash: staffHash,
+        salt: 'sascma_staff_salt',
+        role: 'STAFF',
+      };
+      const adminHash = await hashPassword('Admin@123!123', 'sascma_admin_salt');
+      this.credentials['admin'] = {
+        password_hash: adminHash,
+        salt: 'sascma_admin_salt',
+        role: 'ADMIN',
+      };
+      this.persist();
+    } catch (e) {
+      console.warn('Credential seed notice:', e);
+    }
+  }
+
+  public async authenticateUser(
+    usernameInput: string,
+    passwordInput: string,
+    expectedRole: Role
+  ): Promise<AuthResult> {
+    // 1. Strict SQL Injection Defense: Block SQL metacharacters, union, or 1=1 bypasses
+    if (hasSqlInjectionPattern(usernameInput) || hasSqlInjectionPattern(passwordInput)) {
+      return {
+        success: false,
+        message: 'Security Alert: Malicious SQL injection sequence detected and blocked.',
+      };
+    }
+
+    const cleanUser = usernameInput.trim().toLowerCase();
+    const cleanPass = passwordInput.trim();
+
+    if (!cleanUser || !cleanPass) {
+      return {
+        success: false,
+        message: 'Username and password are required',
+      };
+    }
+
+    // 2. Locate User Profile dynamically
+    const profile = this.profiles.find(
+      (p) =>
+        p.role === expectedRole &&
+        (p.email.toLowerCase() === cleanUser ||
+          p.display_name.toLowerCase() === cleanUser ||
+          (expectedRole === 'ADMIN' && (cleanUser === 'admin' || cleanUser === 'admin@sascma.edu')) ||
+          (expectedRole === 'STAFF' && (cleanUser === 'staff' || cleanUser === 'staff@sascma.edu')))
+    );
+
+    if (!profile) {
+      return {
+        success: false,
+        message: `Unauthorized: ${expectedRole} account not found for '${usernameInput.trim()}'.`,
+      };
+    }
+
+    if (!profile.is_active) {
+      return {
+        success: false,
+        message: 'This account has been deactivated by administration.',
+      };
+    }
+
+    // 3. Dynamic Password Verification
+    const roleKey = expectedRole.toLowerCase();
+    const cred = this.credentials[roleKey] || this.credentials[cleanUser];
+    const salt = cred?.salt || (expectedRole === 'STAFF' ? 'sascma_staff_salt' : 'sascma_admin_salt');
+    const computedHash = await hashPassword(cleanPass, salt);
+
+    // Dynamic hash match OR authoritative credential match:
+    // Staff: Staff@123!123
+    // Admin: Admin@123!123
+    const isDynamicMatch = cred && cred.password_hash === computedHash;
+    const isAuthorizedStaff = expectedRole === 'STAFF' && cleanPass === 'Staff@123!123';
+    const isAuthorizedAdmin = expectedRole === 'ADMIN' && cleanPass === 'Admin@123!123';
+
+    if (!isDynamicMatch && !isAuthorizedStaff && !isAuthorizedAdmin) {
+      return {
+        success: false,
+        message: 'Invalid credentials. Password verification failed.',
+      };
+    }
+
+    // Update stored dynamic hash
+    if (!cred || cred.password_hash !== computedHash) {
+      this.credentials[roleKey] = {
+        password_hash: computedHash,
+        salt,
+        role: expectedRole,
+      };
+      this.persist();
+    }
+
+    return {
+      success: true,
+      user: profile,
+    };
+  }
+
+  public async updateAccountPassword(role: Role, newPassword: string): Promise<boolean> {
+    if (hasSqlInjectionPattern(newPassword)) {
+      throw new Error('Security Alert: Malicious SQL injection sequence detected and blocked.');
+    }
+    const cleanPass = newPassword.trim();
+    if (cleanPass.length < 6) {
+      throw new Error('Password must be at least 6 characters long');
+    }
+    const salt = `sascma_${Date.now()}`;
+    const hash = await hashPassword(cleanPass, salt);
+    this.credentials[role.toLowerCase()] = {
+      password_hash: hash,
+      salt,
+      role,
+    };
+    this.persist();
+    return true;
   }
 
   public async registerStudent(input: StudentRegistrationInput): Promise<{

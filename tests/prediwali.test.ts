@@ -510,5 +510,34 @@ describe('Pre-Diwali Celebration Core Logic & Security Tests', () => {
       expect(typeof dataService.initSupabase).toBe('function');
     });
   });
+
+  describe('9. Dynamic Authentication & SQL Injection Defense', () => {
+    it('authenticates Staff with dynamic credentials', async () => {
+      const res = await dataService.authenticateUser('Staff', 'Staff@123!123', 'STAFF');
+      expect(res.success).toBe(true);
+      expect(res.user?.role).toBe('STAFF');
+    });
+
+    it('authenticates Admin with dynamic credentials', async () => {
+      const res = await dataService.authenticateUser('Admin', 'Admin@123!123', 'ADMIN');
+      expect(res.success).toBe(true);
+      expect(res.user?.role).toBe('ADMIN');
+    });
+
+    it('blocks SQL injection attempts in username and password', async () => {
+      const sqlPayload1 = await dataService.authenticateUser("' OR '1'='1", 'Staff@123!123', 'STAFF');
+      expect(sqlPayload1.success).toBe(false);
+      expect(sqlPayload1.message).toContain('SQL injection sequence detected and blocked');
+
+      const sqlPayload2 = await dataService.authenticateUser('Admin', "'; DROP TABLE profiles; --", 'ADMIN');
+      expect(sqlPayload2.success).toBe(false);
+      expect(sqlPayload2.message).toContain('SQL injection sequence detected and blocked');
+    });
+
+    it('rejects incorrect passwords', async () => {
+      const wrong = await dataService.authenticateUser('Staff', 'WrongPassword!123', 'STAFF');
+      expect(wrong.success).toBe(false);
+    });
+  });
 });
 

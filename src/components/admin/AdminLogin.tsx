@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Shield, Key, AlertCircle } from 'lucide-react';
+import { Shield, Key, AlertCircle, Loader2 } from 'lucide-react';
 import { UserProfile } from '../../types';
 import { dataService } from '../../services/dataService';
 
@@ -8,41 +8,28 @@ interface AdminLoginProps {
 }
 
 export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess }) => {
-  const adminProfiles = dataService.getProfiles().filter((p) => p.role === 'ADMIN');
-  const [username, setUsername] = useState('admin');
+  const [username, setUsername] = useState('Admin');
   const [password, setPassword] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    const cleanUser = username.trim().toLowerCase();
-    const admin = adminProfiles.find(
-      (p) => p.email.toLowerCase() === cleanUser || cleanUser === 'admin' || cleanUser === 'admin@sascma.edu'
-    );
+    setErrorMsg('');
+    setIsLoading(true);
 
-    if (!admin) {
-      setErrorMsg('Unauthorized: Administrative username not found (use: admin)');
-      return;
+    try {
+      const result = await dataService.authenticateUser(username, password, 'ADMIN');
+      if (!result.success || !result.user) {
+        setErrorMsg(result.message || 'Invalid username or password');
+        return;
+      }
+      onLoginSuccess(result.user);
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : 'Authentication failed');
+    } finally {
+      setIsLoading(false);
     }
-
-    if (!admin.is_active) {
-      setErrorMsg('This admin account has been suspended');
-      return;
-    }
-
-    // Authoritative Admin Password verification
-    const cleanPass = password.trim();
-    if (!cleanPass) {
-      setErrorMsg('Please enter your admin password');
-      return;
-    }
-
-    if (cleanPass !== 'admin123' && cleanPass !== 'admin' && cleanPass !== 'Admin@2026' && cleanPass !== '1234') {
-      setErrorMsg('Invalid password. Please enter the correct password (admin123)');
-      return;
-    }
-
-    onLoginSuccess(admin);
   };
 
   return (
@@ -91,7 +78,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess }) => {
             </label>
             <input
               type="password"
-              placeholder="Enter password (admin123)"
+              placeholder="Enter password (Admin@123!123)"
               value={password}
               onChange={(e) => {
                 setPassword(e.target.value);
@@ -104,17 +91,22 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess }) => {
           <div className="pt-2">
             <button
               type="submit"
-              className="w-full py-3.5 rounded-xl bg-[#6D28D9] hover:bg-[#5B21B6] text-white font-bold text-sm shadow-xs flex items-center justify-center gap-2 cursor-pointer transition-all"
+              disabled={isLoading}
+              className="w-full py-3.5 rounded-xl bg-[#6D28D9] hover:bg-[#5B21B6] disabled:opacity-60 text-white font-bold text-sm shadow-xs flex items-center justify-center gap-2 cursor-pointer transition-all"
             >
-              <Key className="w-4 h-4" />
-              <span>Unlock Admin Dashboard</span>
+              {isLoading ? (
+                <Loader2 className="w-4 h-4 animate-spin text-white" />
+              ) : (
+                <Key className="w-4 h-4" />
+              )}
+              <span>{isLoading ? 'Verifying...' : 'Unlock Admin Dashboard'}</span>
             </button>
           </div>
         </form>
 
         <div className="p-3.5 rounded-xl bg-[#FFF0D9] border border-[#E8E2D9] text-xs text-[#29243A] text-center space-y-0.5">
-          <span className="block text-[11px] font-bold text-[#6B655D] uppercase tracking-wider">Default Admin Credentials</span>
-          <p>Username: <span className="text-[#6D28D9] font-mono font-bold">admin</span> | Password: <span className="text-[#6D28D9] font-mono font-bold">admin123</span></p>
+          <span className="block text-[11px] font-bold text-[#6B655D] uppercase tracking-wider">Dynamic Admin Credentials</span>
+          <p>Username: <span className="text-[#6D28D9] font-mono font-bold">Admin</span> | Password: <span className="text-[#6D28D9] font-mono font-bold">Admin@123!123</span></p>
         </div>
       </div>
     </div>

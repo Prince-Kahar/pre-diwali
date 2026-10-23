@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { QrCode, UserCheck, AlertCircle } from 'lucide-react';
+import { QrCode, UserCheck, AlertCircle, Loader2 } from 'lucide-react';
 import { EventSettings, UserProfile } from '../../types';
 import { dataService } from '../../services/dataService';
 
@@ -9,40 +9,28 @@ interface StaffLoginProps {
 }
 
 export const StaffLogin: React.FC<StaffLoginProps> = ({ event, onLoginSuccess }) => {
-  const staffProfiles = dataService.getProfiles().filter((p) => p.role === 'STAFF' && p.is_active);
-  const [username, setUsername] = useState('staff');
+  const [username, setUsername] = useState('Staff');
   const [password, setPassword] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    const cleanUser = username.trim().toLowerCase();
-    const staff = staffProfiles.find(
-      (p) => p.email.toLowerCase() === cleanUser || cleanUser === 'staff' || cleanUser === 'staff@sascma.edu'
-    ) || staffProfiles[0];
+    setErrorMsg('');
+    setIsLoading(true);
 
-    if (!staff) {
-      setErrorMsg('Staff member account not found (use: staff)');
-      return;
+    try {
+      const result = await dataService.authenticateUser(username, password, 'STAFF');
+      if (!result.success || !result.user) {
+        setErrorMsg(result.message || 'Invalid username or password');
+        return;
+      }
+      onLoginSuccess(result.user);
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : 'Authentication failed');
+    } finally {
+      setIsLoading(false);
     }
-
-    if (!staff.is_active) {
-      setErrorMsg('This staff account has been deactivated by administration');
-      return;
-    }
-
-    const cleanPass = password.trim();
-    if (!cleanPass) {
-      setErrorMsg('Please enter staff password');
-      return;
-    }
-
-    if (cleanPass !== 'staff123' && cleanPass !== 'staff' && cleanPass !== '1234' && cleanPass !== 'Staff@2026') {
-      setErrorMsg('Invalid password. Please enter the correct password (staff123)');
-      return;
-    }
-
-    onLoginSuccess(staff);
   };
 
   return (
@@ -91,7 +79,7 @@ export const StaffLogin: React.FC<StaffLoginProps> = ({ event, onLoginSuccess })
             </label>
             <input
               type="password"
-              placeholder="Enter password (staff123)"
+              placeholder="Enter password (Staff@123!123)"
               value={password}
               onChange={(e) => {
                 setPassword(e.target.value);
@@ -104,17 +92,22 @@ export const StaffLogin: React.FC<StaffLoginProps> = ({ event, onLoginSuccess })
           <div className="pt-2">
             <button
               type="submit"
-              className="w-full py-3.5 rounded-xl bg-[#6D28D9] hover:bg-[#5B21B6] text-white font-bold text-sm shadow-xs flex items-center justify-center gap-2 cursor-pointer transition-all"
+              disabled={isLoading}
+              className="w-full py-3.5 rounded-xl bg-[#6D28D9] hover:bg-[#5B21B6] disabled:opacity-60 text-white font-bold text-sm shadow-xs flex items-center justify-center gap-2 cursor-pointer transition-all"
             >
-              <UserCheck className="w-4 h-4" />
-              <span>Launch Gate Scanner</span>
+              {isLoading ? (
+                <Loader2 className="w-4 h-4 animate-spin text-white" />
+              ) : (
+                <UserCheck className="w-4 h-4" />
+              )}
+              <span>{isLoading ? 'Verifying...' : 'Launch Gate Scanner'}</span>
             </button>
           </div>
         </form>
 
         <div className="p-3.5 rounded-xl bg-[#FFF0D9] border border-[#E8E2D9] text-xs text-[#29243A] text-center space-y-0.5">
-          <span className="block text-[11px] font-bold text-[#6B655D] uppercase tracking-wider">Default Staff Credentials</span>
-          <p>Username: <span className="text-[#6D28D9] font-mono font-bold">staff</span> | Password: <span className="text-[#6D28D9] font-mono font-bold">staff123</span></p>
+          <span className="block text-[11px] font-bold text-[#6B655D] uppercase tracking-wider">Dynamic Staff Credentials</span>
+          <p>Username: <span className="text-[#6D28D9] font-mono font-bold">Staff</span> | Password: <span className="text-[#6D28D9] font-mono font-bold">Staff@123!123</span></p>
         </div>
       </div>
     </div>

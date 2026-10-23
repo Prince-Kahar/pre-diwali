@@ -93,6 +93,20 @@ export interface UserProfile {
   updated_at: string;
 }
 
+export interface UserCredential {
+  username: string;
+  role: Role;
+  password_hash: string;
+  salt: string;
+  updated_at: string;
+}
+
+export interface AuthResult {
+  success: boolean;
+  user?: UserProfile;
+  message?: string;
+}
+
 export interface Registration {
   id: string;
   event_id: string;

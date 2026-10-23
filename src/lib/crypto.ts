@@ -77,3 +77,20 @@ export function formatKolkataDateTime(isoString: string): string {
     return isoString;
   }
 }
+
+/**
+ * Computes salted cryptographic hash for dynamic password verification
+ */
+export async function hashPassword(password: string, salt: string = 'sascma_2026_salt'): Promise<string> {
+  return hashToken(`${salt}__${password.trim()}__${salt}`);
+}
+
+/**
+ * Strict SQL injection pattern detector & sanitizer
+ * Blocks SQL meta-characters, comment markers, union select, boolean bypass, and stack queries
+ */
+export function hasSqlInjectionPattern(input: string): boolean {
+  if (!input || typeof input !== 'string') return false;
+  const pattern = /('|--|;|\/\*|\*\/|@@|char\s*\(|nchar\s*\(|varchar\s*\(|alter\s+|drop\s+|truncate\s+|exec\s*\(|insert\s+into|select\s+.*\s+from|union\s+select|or\s+['"\d\w]+\s*=\s*['"\d\w]+|or\s+1\s*=\s*1|or\s+true)/i;
+  return pattern.test(input);
+}
