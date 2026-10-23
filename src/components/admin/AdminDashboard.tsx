@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import jsPDF from 'jspdf';
 import {
   Users,
   CreditCard,
@@ -26,6 +27,12 @@ import {
   ChevronLeft,
   Eye,
   ImageIcon,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  Edit3,
+  FileText,
+  RotateCcw,
 } from 'lucide-react';
 import {
   EventSettings,
@@ -85,12 +92,29 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [pricingHistory, setPricingHistory] = useState<PricingHistoryRecord[]>(dataService.getPricingHistory());
   const [scansList, setScansList] = useState<EntryScanLog[]>(dataService.getScansList());
 
-  // Filters for registrations table
+  // Filters & Sorting for registrations table
   const [searchTerm, setSearchTerm] = useState('');
-  const [yearFilter, setYearFilter] = useState<'ALL' | AcademicYear>('ALL');
+  const [yearFilter, setYearFilter] = useState<'ALL' | AcademicYear | 'FY' | 'SY'>('ALL');
   const [foodFilter, setFoodFilter] = useState<'ALL' | FoodPreference>('ALL');
   const [paymentFilter, setPaymentFilter] = useState<'ALL' | PaymentStatus>('ALL');
   const [entryFilter, setEntryFilter] = useState<'ALL' | 'CHECKED_IN' | 'NOT_CHECKED_IN'>('ALL');
+
+  // Roll Number Sorting (Requirement: natural alphanumeric sort like IT1, IT2, IT10)
+  const [sortField, setSortField] = useState<'roll' | 'name' | 'created_at'>('roll');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+
+  // Edit Student Registration Modal State
+  const [editingReg, setEditingReg] = useState<(Registration & { payment?: PaymentRecord; pass?: EntryPass }) | null>(null);
+  const [editForm, setEditForm] = useState({
+    full_name: '',
+    roll_number: '',
+    academic_year: 'FY - M.Sc.IT' as AcademicYear,
+    contact_number: '',
+    food_preference: 'Regular' as FoodPreference,
+    performance_talent: '',
+  });
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
 
   // Pagination for registrations
   const [currentPage, setCurrentPage] = useState(1);
@@ -197,9 +221,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       r.full_name.toLowerCase().includes(term) ||
       r.normalized_roll_number.toLowerCase().includes(term) ||
       r.contact_number.includes(term) ||
+      (r.performance_talent && r.performance_talent.toLowerCase().includes(term)) ||
       r.id.toLowerCase().includes(term);
 
-    const matchesYear = yearFilter === 'ALL' || r.academic_year === yearFilter;
+    const matchesYear =
+      yearFilter === 'ALL' ||
+      (r.academic_year as string) === yearFilter ||
+      (yearFilter === 'FY' && (r.academic_year as string).startsWith('FY')) ||
+      (yearFilter === 'SY' && (r.academic_year as string).startsWith('SY'));
+
     const matchesFood = foodFilter === 'ALL' || r.food_preference === foodFilter;
     const matchesPayment = paymentFilter === 'ALL' || r.payment_status === paymentFilter;
 
@@ -213,11 +243,97 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     return matchesSearch && matchesYear && matchesFood && matchesPayment && matchesEntry;
   });
 
-  const totalPages = Math.ceil(filteredRegistrations.length / pageSize) || 1;
-  const paginatedRegistrations = filteredRegistrations.slice(
+  // Natural numeric sorting for Roll Numbers (e.g. IT1, IT2, IT10, IT101) & name/date
+  const sortedRegistrations = [...filteredRegistrations].sort((a, b) => {
+    if (sortField === 'roll') {
+      const cmp = a.normalized_roll_number.localeCompare(b.normalized_roll_number, undefined, {
+        numeric: true,
+        sensitivity: 'base',
+      });
+      return sortOrder === 'asc' ? cmp : -cmp;
+    }
+    if (sortField === 'name') {
+      const cmp = a.full_name.localeCompare(b.full_name);
+      return sortOrder === 'asc' ? cmp : -cmp;
+    }
+    if (sortField === 'created_at') {
+      const cmp = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      return sortOrder === 'asc' ? cmp : -cmp;
+    }
+    return 0;
+  });
+
+  const totalPages = Math.ceil(sortedRegistrations.length / pageSize) || 1;
+  const paginatedRegistrations = sortedRegistrations.slice(
     (currentPage - 1) * pageSize,
     currentPage * pageSize
   );
+
+  const handleToggleSort = (field: 'roll' | 'name' | 'created_at') => {
+    if (sortField === field) {
+      setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      setSortOrder('asc');
+    }
+    setCurrentPage(1);
+  };
+
+  // Re-activate scanned QR pass (Allow re-entry / reuse)
+  const handleReactivatePass = async (passId: string, studentName?: string) => {
+    const confirmed = window.confirm(
+      `Allow ${studentName || 'this student'} to re-enter using their existing QR code? Their pass will be reset to VALID.`
+    );
+    if (!confirmed) return;
+    try {
+      await dataService.reactivateUsedPassAdmin(passId, adminUser.id, 'Pass re-activated by admin for student re-entry');
+      refreshAll();
+      alert('Entry pass re-activated successfully! The student can now scan their QR pass again at the gate.');
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to reactivate pass');
+    }
+  };
+
+  // Edit Student Registration Modal Handlers
+  const handleStartEditReg = (reg: Registration & { payment?: PaymentRecord; pass?: EntryPass }) => {
+    setEditingReg(reg);
+    setEditForm({
+      full_name: reg.full_name,
+      roll_number: reg.normalized_roll_number,
+      academic_year: (reg.academic_year as AcademicYear) || 'FY - M.Sc.IT',
+      contact_number: reg.contact_number,
+      food_preference: reg.food_preference,
+      performance_talent: reg.performance_talent || '',
+    });
+    setEditError(null);
+  };
+
+  const handleSaveEditReg = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingReg) return;
+    if (!editForm.full_name.trim() || !editForm.roll_number.trim() || !editForm.contact_number.trim()) {
+      setEditError('Please fill in Student Name, Roll Number, and Contact Number.');
+      return;
+    }
+    setIsSavingEdit(true);
+    setEditError(null);
+    try {
+      await dataService.updateRegistrationAdmin(adminUser.id, editingReg.id, {
+        full_name: editForm.full_name,
+        roll_number: editForm.roll_number,
+        academic_year: editForm.academic_year,
+        contact_number: editForm.contact_number,
+        food_preference: editForm.food_preference,
+        performance_talent: editForm.performance_talent,
+      });
+      setEditingReg(null);
+      refreshAll();
+    } catch (err: unknown) {
+      setEditError(err instanceof Error ? err.message : 'Failed to update student registration');
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
 
   // Verify Payment Handler
   const handleConfirmVerifyPayment = async () => {
@@ -401,44 +517,253 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   // CSV Exporter
-  const exportRegistrationsCsv = () => {
-    const headers = [
-      'Registration ID',
-      'Student Name',
-      'Roll Number',
-      'Academic Year',
-      'Food Preference',
-      'Masked Contact',
-      'Payment Status',
-      'Amount (INR)',
-      'Pass Status',
-      'Entry Checked In',
-      'Registration Date',
-    ];
+  // Helper for formatting date-time in exported reports
+  const formatReportDateTime = (iso?: string) => {
+    if (!iso) return '—';
+    try {
+      const d = new Date(iso);
+      return d.toLocaleString('en-IN', {
+        timeZone: 'Asia/Kolkata',
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true,
+      });
+    } catch {
+      return iso;
+    }
+  };
 
-    const rows = filteredRegistrations.map((r) => [
-      r.id,
-      `"${r.full_name}"`,
-      r.normalized_roll_number,
-      r.academic_year,
-      r.food_preference,
-      maskContactNumber(r.contact_number),
-      r.payment_status,
-      r.expected_amount_minor_units / 100,
-      r.pass?.status || 'NO_PASS',
-      r.pass?.status === 'USED' ? 'YES' : 'NO',
-      `"${r.created_at}"`,
-    ]);
+  // 1. Genuine Excel Exporter (.xls format with styling, timestamps, and stage performance)
+  const exportRegistrationsExcel = () => {
+    const rowsHtml = sortedRegistrations.map((r, idx) => {
+      const regTime = formatReportDateTime(r.created_at);
+      const apprTime = r.payment?.verified_at
+        ? formatReportDateTime(r.payment.verified_at)
+        : (r.payment_status === 'PAID' ? 'Verified' : 'Pending');
+      const gateTime = r.pass?.redeemed_at
+        ? formatReportDateTime(r.pass.redeemed_at)
+        : (r.pass?.status === 'USED' ? 'Scanned' : 'Not scanned');
+      const utr = r.payment?.transaction_reference || '—';
 
-    const csvContent = [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      return `
+        <tr>
+          <td style="text-align: center; font-weight: bold;">${idx + 1}</td>
+          <td style="font-weight: bold; font-family: monospace; color: #6D28D9;">${r.normalized_roll_number}</td>
+          <td style="font-weight: bold;">${r.full_name}</td>
+          <td>${r.academic_year}</td>
+          <td>${r.food_preference}</td>
+          <td>${r.contact_number}</td>
+          <td style="font-weight: bold; color: ${r.payment_status === 'PAID' ? '#15803D' : r.payment_status === 'PENDING' ? '#B45309' : '#B91C1C'};">${r.payment_status}</td>
+          <td>₹${(r.expected_amount_minor_units / 100).toFixed(2)}</td>
+          <td style="font-weight: bold; color: ${r.pass?.status === 'VALID' ? '#15803D' : r.pass?.status === 'USED' ? '#B45309' : '#6B655D'};">${r.pass?.status || 'NO_PASS'}</td>
+          <td style="font-weight: 600; color: #6D28D9;">${r.performance_talent || 'None'}</td>
+          <td>${regTime}</td>
+          <td>${apprTime}</td>
+          <td>${gateTime}</td>
+          <td style="font-family: monospace;">${utr}</td>
+        </tr>
+      `;
+    }).join('');
+
+    const excelTemplate = `
+      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+      <head>
+        <meta http-equiv="content-type" content="application/vnd.ms-excel; charset=UTF-8"/>
+        <style>
+          table { border-collapse: collapse; width: 100%; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 11px; }
+          th { background-color: #6D28D9; color: #FFFFFF; font-weight: bold; border: 1px solid #CCCCCC; padding: 10px 8px; text-align: left; }
+          td { border: 1px solid #E0E0E0; padding: 8px; vertical-align: middle; }
+          tr:nth-child(even) { background-color: #FDF9F3; }
+          .title-header { font-size: 16px; font-weight: bold; color: #6D28D9; padding: 10px 0 4px 0; }
+          .meta-info { font-size: 11px; color: #555555; padding-bottom: 12px; }
+        </style>
+      </head>
+      <body>
+        <div class="title-header">${event.college_name || 'College Cultural Committee'} — Pre-Diwali Event Registrations & Entrance Report</div>
+        <div class="meta-info">
+          Generated on: ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} (IST) | 
+          Total Filtered Records: ${sortedRegistrations.length} | 
+          Paid: ${sortedRegistrations.filter((r) => r.payment_status === 'PAID').length} | 
+          Admitted at Entrance: ${sortedRegistrations.filter((r) => r.pass?.status === 'USED').length}
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Roll Number</th>
+              <th>Student Full Name</th>
+              <th>Academic Year / Course</th>
+              <th>Food Preference</th>
+              <th>Contact Number</th>
+              <th>Payment Status</th>
+              <th>Amount (INR)</th>
+              <th>Pass Status</th>
+              <th>Stage Talent / Performance</th>
+              <th>Registration Timestamp</th>
+              <th>Approval Timestamp</th>
+              <th>Gate Scan Timestamp</th>
+              <th>UPI Reference / UTR</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml}
+          </tbody>
+        </table>
+      </body>
+      </html>
+    `;
+
+    const blob = new Blob([excelTemplate], { type: 'application/vnd.ms-excel;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.setAttribute('href', url);
-    link.setAttribute('download', `PreDiwali_Registrations_Export_${Date.now()}.csv`);
+    link.setAttribute('download', `PreDiwali_Registrations_Excel_${Date.now()}.xls`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  // 2. Formatted Multi-Page PDF Exporter (with Timestamps & Stage Performance)
+  const exportRegistrationsPdf = () => {
+    const doc = new jsPDF({
+      orientation: 'landscape',
+      unit: 'pt',
+      format: 'a4',
+    });
+
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 28;
+
+    // Header banner
+    doc.setFillColor(109, 40, 217); // #6D28D9
+    doc.rect(margin, 20, pageWidth - margin * 2, 45, 'F');
+
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text(event.college_name || 'College Cultural Committee', margin + 14, 40);
+
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Pre-Diwali Celebration — Student Registrations, Timestamps & Gate Entrance Audit Report', margin + 14, 55);
+
+    // Sub-header details
+    doc.setTextColor(41, 36, 58);
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    const nowStr = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+    doc.text(
+      `Generated: ${nowStr} (IST) | Total: ${sortedRegistrations.length} | Paid: ${
+        sortedRegistrations.filter((r) => r.payment_status === 'PAID').length
+      } | Admitted: ${sortedRegistrations.filter((r) => r.pass?.status === 'USED').length}`,
+      margin,
+      80
+    );
+
+    // Table Column Definitions (Total ~786pt width)
+    const cols = [
+      { title: '#', width: 25 },
+      { title: 'Roll No', width: 60 },
+      { title: 'Student Name', width: 110 },
+      { title: 'Course / Year', width: 85 },
+      { title: 'Food', width: 45 },
+      { title: 'Stage Talent', width: 85 },
+      { title: 'Payment', width: 50 },
+      { title: 'Pass Status', width: 55 },
+      { title: 'Reg Timestamp', width: 85 },
+      { title: 'Appr Timestamp', width: 85 },
+      { title: 'Gate Scan Time', width: 100 },
+    ];
+
+    let currentY = 96;
+    const rowHeight = 20;
+
+    const drawTableHeader = (y: number) => {
+      doc.setFillColor(255, 240, 217); // #FFF0D9
+      doc.rect(margin, y, pageWidth - margin * 2, rowHeight, 'F');
+      doc.setDrawColor(232, 226, 217);
+      doc.rect(margin, y, pageWidth - margin * 2, rowHeight, 'S');
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.setTextColor(41, 36, 58);
+
+      let x = margin;
+      cols.forEach((col) => {
+        doc.text(col.title, x + 4, y + 13);
+        x += col.width;
+      });
+    };
+
+    drawTableHeader(currentY);
+    currentY += rowHeight;
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+
+    sortedRegistrations.forEach((r, idx) => {
+      if (currentY + rowHeight > pageHeight - 30) {
+        doc.addPage();
+        currentY = 30;
+        drawTableHeader(currentY);
+        currentY += rowHeight;
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7.5);
+      }
+
+      if (idx % 2 === 1) {
+        doc.setFillColor(253, 250, 245);
+        doc.rect(margin, currentY, pageWidth - margin * 2, rowHeight, 'F');
+      }
+      doc.setDrawColor(240, 235, 227);
+      doc.line(margin, currentY + rowHeight, pageWidth - margin, currentY + rowHeight);
+
+      let x = margin;
+      doc.setTextColor(41, 36, 58);
+
+      const regTime = formatReportDateTime(r.created_at);
+      const apprTime = r.payment?.verified_at
+        ? formatReportDateTime(r.payment.verified_at)
+        : (r.payment_status === 'PAID' ? 'Verified' : 'Pending');
+      const gateTime = r.pass?.redeemed_at
+        ? formatReportDateTime(r.pass.redeemed_at)
+        : (r.pass?.status === 'USED' ? 'Scanned' : 'Not scanned');
+
+      const values = [
+        (idx + 1).toString(),
+        r.normalized_roll_number,
+        r.full_name.length > 20 ? r.full_name.slice(0, 19) + '…' : r.full_name,
+        r.academic_year,
+        r.food_preference,
+        r.performance_talent ? (r.performance_talent.length > 15 ? r.performance_talent.slice(0, 14) + '…' : r.performance_talent) : '—',
+        r.payment_status,
+        r.pass?.status || 'NO_PASS',
+        regTime,
+        apprTime,
+        gateTime,
+      ];
+
+      values.forEach((val, vIdx) => {
+        doc.text(val, x + 4, currentY + 13);
+        x += cols[vIdx].width;
+      });
+
+      currentY += rowHeight;
+    });
+
+    const pageCount = doc.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.setTextColor(107, 101, 93);
+      doc.text(`Page ${i} of ${pageCount}`, pageWidth - margin - 50, pageHeight - 15);
+    }
+
+    doc.save(`PreDiwali_Registrations_Report_${Date.now()}.pdf`);
   };
 
   return (
@@ -913,26 +1238,38 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div>
                   <h2 className="text-xl font-black text-[#29243A]">Student Registrations</h2>
                   <p className="text-xs text-[#6B655D]">
-                    Search, filter, and inspect student registrations, payment snapshots, and pass status.
+                    Search, filter, roll number sorting, timestamps audit, and full student record management.
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={exportRegistrationsCsv}
-                  className="px-4 py-2.5 rounded-xl bg-[#FFF0D9] hover:bg-[#FFE6C2] text-[#29243A] text-xs font-bold border border-[#E8E2D9] flex items-center gap-2 transition-colors cursor-pointer shadow-xs"
-                >
-                  <Download className="w-4 h-4 text-[#6D28D9]" />
-                  <span>Export CSV</span>
-                </button>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={exportRegistrationsExcel}
+                    className="px-3.5 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-[#15803D] text-xs font-bold border border-emerald-200 flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                    title="Export styled Excel workbook (.xls)"
+                  >
+                    <FileSpreadsheet className="w-4 h-4 text-[#15803D]" />
+                    <span>Export Excel</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={exportRegistrationsPdf}
+                    className="px-3.5 py-2 rounded-xl bg-[#6D28D9] hover:bg-[#5B21B6] text-white text-xs font-bold shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                    title="Export formatted PDF report with timestamps"
+                  >
+                    <FileText className="w-4 h-4" />
+                    <span>Export PDF</span>
+                  </button>
+                </div>
               </div>
 
               {/* Filters */}
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                <div className="relative sm:col-span-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="relative">
                   <Search className="w-4 h-4 text-[#6B655D] absolute left-3 top-3" />
                   <input
                     type="text"
-                    placeholder="Search name, roll, phone..."
+                    placeholder="Search name, roll, phone, talent..."
                     value={searchTerm}
                     onChange={(e) => {
                       setSearchTerm(e.target.value);
@@ -945,14 +1282,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <select
                   value={yearFilter}
                   onChange={(e) => {
-                    setYearFilter(e.target.value as 'ALL' | AcademicYear);
+                    setYearFilter(e.target.value as 'ALL' | AcademicYear | 'FY' | 'SY');
                     setCurrentPage(1);
                   }}
                   className="px-3 py-2 rounded-xl bg-[#FFFCF5] border border-[#E8E2D9] text-xs text-[#29243A] font-semibold cursor-pointer"
                 >
                   <option value="ALL">All Academic Years</option>
-                  <option value="FY">First Year (FY)</option>
-                  <option value="SY">Second Year (SY)</option>
+                  <option value="FY - M.Sc.IT">FY - M.Sc.IT</option>
+                  <option value="FY - Data Science">FY - Data Science</option>
+                  <option value="SY - M.Sc.IT">SY - M.Sc.IT</option>
+                  <option value="SY - Data Science">SY - Data Science</option>
+                  <option value="FY">First Year (FY - All)</option>
+                  <option value="SY">Second Year (SY - All)</option>
                 </select>
 
                 <select
@@ -983,16 +1324,51 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </select>
               </div>
 
-              {/* Table */}
-              <div className="overflow-x-auto rounded-2xl border border-[#E8E2D9]">
-                <table className="w-full text-left text-xs text-[#29243A]">
+              {/* Responsive Table with Horizontal Scroll */}
+              <div className="overflow-x-auto rounded-2xl border border-[#E8E2D9] shadow-2xs">
+                <table className="w-full min-w-[980px] text-left text-xs text-[#29243A]">
                   <thead className="bg-[#FFF0D9] text-[#29243A] font-bold border-b border-[#E8E2D9]">
                     <tr>
-                      <th className="p-3.5">Student Name</th>
-                      <th className="p-3.5">Roll No</th>
-                      <th className="p-3.5">Year</th>
+                      <th
+                        className="p-3.5 cursor-pointer hover:bg-[#FFE6C2] transition-colors select-none"
+                        onClick={() => handleToggleSort('roll')}
+                        title="Click to sort by Roll Number (Natural numeric ordering)"
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <span>Roll No</span>
+                          {sortField === 'roll' ? (
+                            sortOrder === 'asc' ? (
+                              <ArrowUp className="w-3.5 h-3.5 text-[#6D28D9]" />
+                            ) : (
+                              <ArrowDown className="w-3.5 h-3.5 text-[#6D28D9]" />
+                            )
+                          ) : (
+                            <ArrowUpDown className="w-3.5 h-3.5 text-[#6B655D]/40" />
+                          )}
+                        </div>
+                      </th>
+                      <th
+                        className="p-3.5 cursor-pointer hover:bg-[#FFE6C2] transition-colors select-none"
+                        onClick={() => handleToggleSort('name')}
+                        title="Click to sort by Student Name"
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <span>Student Name</span>
+                          {sortField === 'name' ? (
+                            sortOrder === 'asc' ? (
+                              <ArrowUp className="w-3.5 h-3.5 text-[#6D28D9]" />
+                            ) : (
+                              <ArrowDown className="w-3.5 h-3.5 text-[#6D28D9]" />
+                            )
+                          ) : (
+                            <ArrowUpDown className="w-3.5 h-3.5 text-[#6B655D]/40" />
+                          )}
+                        </div>
+                      </th>
+                      <th className="p-3.5">Course / Year</th>
                       <th className="p-3.5">Food</th>
-                      <th className="p-3.5">Fee Snapshot</th>
+                      <th className="p-3.5">Stage Talent</th>
+                      <th className="p-3.5">Timestamps (Reg / Appr / Gate)</th>
                       <th className="p-3.5">Payment</th>
                       <th className="p-3.5">Entry Pass</th>
                       <th className="p-3.5 text-right">Actions</th>
@@ -1001,25 +1377,80 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <tbody className="divide-y divide-[#E8E2D9] bg-white">
                     {paginatedRegistrations.length === 0 ? (
                       <tr>
-                        <td colSpan={8} className="p-8 text-center text-[#6B655D]">
+                        <td colSpan={9} className="p-8 text-center text-[#6B655D]">
                           No registrations match the selected filters.
                         </td>
                       </tr>
                     ) : (
                       paginatedRegistrations.map((reg) => (
                         <tr key={reg.id} className="hover:bg-[#FFF0D9]/30 transition-colors">
-                          <td className="p-3.5 font-bold text-[#29243A]">{reg.full_name}</td>
-                          <td className="p-3.5 font-mono font-bold text-[#6D28D9]">{reg.normalized_roll_number}</td>
-                          <td className="p-3.5">{reg.academic_year}</td>
-                          <td className="p-3.5">
+                          <td className="p-3.5 font-mono font-bold text-[#6D28D9] whitespace-nowrap">
+                            {reg.normalized_roll_number}
+                          </td>
+                          <td className="p-3.5 font-bold text-[#29243A] whitespace-nowrap">
+                            {reg.full_name}
+                          </td>
+                          <td className="p-3.5 whitespace-nowrap text-[#29243A]">{reg.academic_year}</td>
+                          <td className="p-3.5 whitespace-nowrap">
                             <span className="px-2 py-0.5 rounded-full bg-[#FFF0D9] text-[#29243A] font-bold text-[10px]">
                               {reg.food_preference}
                             </span>
                           </td>
-                          <td className="p-3.5 font-bold text-[#29243A]">
-                            {formatINR(reg.expected_amount_minor_units, reg.currency)}
-                          </td>
                           <td className="p-3.5">
+                            {reg.performance_talent ? (
+                              <span
+                                className="px-2 py-0.5 rounded-full bg-purple-50 text-[#6D28D9] font-bold text-[10px] border border-purple-200 inline-block max-w-[130px] truncate"
+                                title={reg.performance_talent}
+                              >
+                                🎭 {reg.performance_talent}
+                              </span>
+                            ) : (
+                              <span className="text-[#6B655D]/60 text-[10px] italic">None</span>
+                            )}
+                          </td>
+                          <td className="p-3.5 text-[10px] space-y-0.5 whitespace-nowrap">
+                            <div className="flex items-center gap-1.5 text-[#29243A]">
+                              <span className="font-bold text-[#6B655D] w-8">Reg:</span>
+                              <span>{formatKolkataDateTime(reg.created_at)}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-bold text-[#6B655D] w-8">Appr:</span>
+                              <span
+                                className={
+                                  reg.payment?.verified_at
+                                    ? 'text-[#15803D] font-bold'
+                                    : reg.payment_status === 'PAID'
+                                    ? 'text-[#15803D] font-medium'
+                                    : 'text-[#6B655D]'
+                                }
+                              >
+                                {reg.payment?.verified_at
+                                  ? formatKolkataDateTime(reg.payment.verified_at)
+                                  : reg.payment_status === 'PAID'
+                                  ? 'Verified'
+                                  : 'Pending'}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-bold text-[#6B655D] w-8">Gate:</span>
+                              <span
+                                className={
+                                  reg.pass?.redeemed_at
+                                    ? 'text-[#15803D] font-bold'
+                                    : reg.pass?.status === 'USED'
+                                    ? 'text-[#B45309] font-bold'
+                                    : 'text-[#6B655D]'
+                                }
+                              >
+                                {reg.pass?.redeemed_at
+                                  ? formatKolkataDateTime(reg.pass.redeemed_at)
+                                  : reg.pass?.status === 'USED'
+                                  ? 'Scanned'
+                                  : 'Not scanned'}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="p-3.5 whitespace-nowrap">
                             <span
                               className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
                                 reg.payment_status === 'PAID'
@@ -1032,7 +1463,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               {reg.payment_status}
                             </span>
                           </td>
-                          <td className="p-3.5">
+                          <td className="p-3.5 whitespace-nowrap">
                             {reg.pass ? (
                               <span
                                 className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
@@ -1049,23 +1480,50 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               <span className="text-[#6B655D] text-[10px]">No Pass</span>
                             )}
                           </td>
-                          <td className="p-3.5 text-right space-x-1">
-                            <button
-                              type="button"
-                              onClick={() => setSelectedReg(reg)}
-                              className="px-2.5 py-1 rounded-lg bg-[#FFFCF5] hover:bg-[#FFF0D9] text-[#29243A] border border-[#E8E2D9] text-[11px] font-bold cursor-pointer"
-                            >
-                              Details
-                            </button>
-                            {reg.pass && (
+                          <td className="p-3.5 text-right whitespace-nowrap">
+                            <div className="flex items-center justify-end gap-1">
                               <button
                                 type="button"
-                                onClick={() => handleRevokePass(reg.pass!.id)}
-                                className="px-2 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-[#B91C1C] border border-rose-200 text-[10px] font-bold cursor-pointer"
+                                onClick={() => setSelectedReg(reg)}
+                                className="px-2 py-1 rounded-lg bg-[#FFFCF5] hover:bg-[#FFF0D9] text-[#29243A] border border-[#E8E2D9] text-[10px] font-bold cursor-pointer"
+                                title="View full registration details"
                               >
-                                Revoke
+                                Details
                               </button>
-                            )}
+
+                              <button
+                                type="button"
+                                onClick={() => handleStartEditReg(reg)}
+                                className="px-2 py-1 rounded-lg bg-[#FFF0D9] hover:bg-[#FFE6C2] text-[#6D28D9] border border-[#E8E2D9] text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer"
+                                title="Edit student registration details"
+                              >
+                                <Edit3 className="w-2.5 h-2.5" />
+                                <span>Edit</span>
+                              </button>
+
+                              {reg.pass?.status === 'USED' && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleReactivatePass(reg.pass!.id, reg.full_name)}
+                                  className="px-2 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-[#15803D] border border-emerald-200 text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer"
+                                  title="Allow student to re-enter using their existing QR code"
+                                >
+                                  <RotateCcw className="w-2.5 h-2.5" />
+                                  <span>Re-use QR</span>
+                                </button>
+                              )}
+
+                              {reg.pass?.status === 'VALID' && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleRevokePass(reg.pass!.id)}
+                                  className="px-2 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-[#B91C1C] border border-rose-200 text-[10px] font-bold cursor-pointer"
+                                  title="Revoke pass"
+                                >
+                                  Revoke
+                                </button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       ))
@@ -1693,7 +2151,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               'Not scanned yet'
                             )}
                           </td>
-                          <td className="p-3.5 text-right space-x-1">
+                          <td className="p-3.5 text-right space-x-1 whitespace-nowrap">
+                            {r.pass!.status === 'USED' && (
+                              <button
+                                type="button"
+                                onClick={() => handleReactivatePass(r.pass!.id, r.full_name)}
+                                className="px-2 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-[#15803D] border border-emerald-200 text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer"
+                                title="Allow student to re-enter using their existing QR code"
+                              >
+                                <RotateCcw className="w-3 h-3" />
+                                <span>Re-use QR</span>
+                              </button>
+                            )}
                             {r.pass!.status === 'VALID' && (
                               <button
                                 type="button"
@@ -1884,14 +2353,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     Summary statistics, dietary tallies for caterers, academic year breakdown, and revenue reconciliation.
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={exportRegistrationsCsv}
-                  className="px-4 py-2 rounded-xl bg-[#6D28D9] hover:bg-[#5B21B6] text-white text-xs font-bold shadow-xs cursor-pointer flex items-center gap-1.5"
-                >
-                  <Download className="w-4 h-4" />
-                  <span>Download Master Report</span>
-                </button>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={exportRegistrationsExcel}
+                    className="px-3.5 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-[#15803D] text-xs font-bold border border-emerald-200 flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                  >
+                    <FileSpreadsheet className="w-4 h-4 text-[#15803D]" />
+                    <span>Download Excel</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={exportRegistrationsPdf}
+                    className="px-3.5 py-2 rounded-xl bg-[#6D28D9] hover:bg-[#5B21B6] text-white text-xs font-bold shadow-xs cursor-pointer flex items-center gap-1.5 transition-colors"
+                  >
+                    <FileText className="w-4 h-4" />
+                    <span>Download PDF Report</span>
+                  </button>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -2224,13 +2703,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {/* ----------------- REGISTRATION DETAILS MODAL ----------------- */}
       {selectedReg && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
-          <div className="bg-white border border-[#E8E2D9] rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4">
+          <div className="bg-white border border-[#E8E2D9] rounded-3xl p-6 max-w-lg w-full shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-[#E8E2D9]">
-              <h3 className="text-base font-bold text-[#29243A]">Student Registration Record</h3>
+              <div>
+                <h3 className="text-base font-bold text-[#29243A]">Student Registration Record</h3>
+                <span className="text-[11px] text-[#6B655D]">Roll No: {selectedReg.normalized_roll_number}</span>
+              </div>
               <button
                 type="button"
                 onClick={() => setSelectedReg(null)}
-                className="text-xs font-bold text-[#6B655D] hover:text-[#29243A]"
+                className="text-xs font-bold text-[#6B655D] hover:text-[#29243A] cursor-pointer"
               >
                 Close
               </button>
@@ -2246,26 +2728,82 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <span className="font-mono font-bold text-[#6D28D9]">{selectedReg.normalized_roll_number}</span>
               </div>
               <div className="flex justify-between py-1 border-b border-[#E8E2D9]">
-                <span className="text-[#6B655D]">Academic Year:</span>
+                <span className="text-[#6B655D]">Course / Academic Year:</span>
                 <span className="font-bold text-[#29243A]">{selectedReg.academic_year}</span>
               </div>
               <div className="flex justify-between py-1 border-b border-[#E8E2D9]">
                 <span className="text-[#6B655D]">Food Preference:</span>
-                <span className="font-bold text-[#29243A]">{selectedReg.food_preference}</span>
+                <span className="font-bold text-[#29243A]">{selectedReg.food_preference} Dinner</span>
               </div>
               <div className="flex justify-between py-1 border-b border-[#E8E2D9]">
                 <span className="text-[#6B655D]">Contact Number:</span>
                 <span className="font-mono text-[#29243A]">{selectedReg.contact_number}</span>
               </div>
               <div className="flex justify-between py-1 border-b border-[#E8E2D9]">
-                <span className="text-[#6B655D]">Immutable Fee Snapshot:</span>
+                <span className="text-[#6B655D]">Stage Performance Talent:</span>
+                <span className="font-bold text-[#6D28D9]">
+                  {selectedReg.performance_talent || 'None (General Attendance)'}
+                </span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-[#E8E2D9]">
+                <span className="text-[#6B655D]">Registration Timestamp:</span>
+                <span className="font-medium text-[#29243A]">{formatKolkataDateTime(selectedReg.created_at)}</span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-[#E8E2D9]">
+                <span className="text-[#6B655D]">Payment Approval Timestamp:</span>
+                <span
+                  className={
+                    selectedReg.payment?.verified_at
+                      ? 'text-[#15803D] font-bold'
+                      : selectedReg.payment_status === 'PAID'
+                      ? 'text-[#15803D] font-medium'
+                      : 'text-[#6B655D]'
+                  }
+                >
+                  {selectedReg.payment?.verified_at
+                    ? formatKolkataDateTime(selectedReg.payment.verified_at)
+                    : selectedReg.payment_status === 'PAID'
+                    ? 'Verified'
+                    : 'Pending'}
+                </span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-[#E8E2D9]">
+                <span className="text-[#6B655D]">Gate QR Scanner Timestamp:</span>
+                <span
+                  className={
+                    selectedReg.pass?.redeemed_at
+                      ? 'text-[#15803D] font-bold'
+                      : selectedReg.pass?.status === 'USED'
+                      ? 'text-[#B45309] font-bold'
+                      : 'text-[#6B655D]'
+                  }
+                >
+                  {selectedReg.pass?.redeemed_at
+                    ? formatKolkataDateTime(selectedReg.pass.redeemed_at)
+                    : selectedReg.pass?.status === 'USED'
+                    ? 'Scanned & Admitted'
+                    : 'Not scanned yet'}
+                </span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-[#E8E2D9]">
+                <span className="text-[#6B655D]">Fee Amount:</span>
                 <span className="font-black text-[#6D28D9]">
                   {formatINR(selectedReg.expected_amount_minor_units, selectedReg.currency)}
                 </span>
               </div>
               <div className="flex justify-between py-1 border-b border-[#E8E2D9]">
                 <span className="text-[#6B655D]">Payment Status:</span>
-                <span className="font-bold text-[#29243A]">{selectedReg.payment_status}</span>
+                <span
+                  className={`font-bold px-2 py-0.5 rounded-full text-[10px] ${
+                    selectedReg.payment_status === 'PAID'
+                      ? 'bg-emerald-50 text-[#15803D]'
+                      : selectedReg.payment_status === 'PENDING'
+                      ? 'bg-amber-50 text-[#B45309]'
+                      : 'bg-rose-50 text-[#B91C1C]'
+                  }`}
+                >
+                  {selectedReg.payment_status}
+                </span>
               </div>
               {selectedReg.payment?.screenshot_url && (
                 <div className="py-2 border-b border-[#E8E2D9] flex items-center justify-between">
@@ -2294,19 +2832,188 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               )}
               <div className="flex justify-between py-1">
                 <span className="text-[#6B655D]">Pass Token Hash:</span>
-                <span className="font-mono text-[10px] text-[#6B655D] truncate max-w-[180px]">
+                <span className="font-mono text-[10px] text-[#6B655D] truncate max-w-[200px]">
                   {selectedReg.pass?.token_hash || 'No pass generated yet'}
                 </span>
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={() => setSelectedReg(null)}
-              className="w-full py-2.5 rounded-xl bg-[#6D28D9] hover:bg-[#5B21B6] text-white font-bold text-xs shadow-xs"
-            >
-              Done
-            </button>
+            {/* Quick Actions in Detail Modal */}
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const target = selectedReg;
+                  setSelectedReg(null);
+                  handleStartEditReg(target);
+                }}
+                className="flex-1 py-2 rounded-xl bg-[#FFF0D9] hover:bg-[#FFE6C2] text-[#6D28D9] font-bold text-xs border border-[#E8E2D9] flex items-center justify-center gap-1 cursor-pointer"
+              >
+                <Edit3 className="w-3.5 h-3.5" />
+                <span>Edit Registration</span>
+              </button>
+
+              {selectedReg.pass?.status === 'USED' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleReactivatePass(selectedReg.pass!.id, selectedReg.full_name);
+                    setSelectedReg(null);
+                  }}
+                  className="flex-1 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-[#15803D] font-bold text-xs border border-emerald-200 flex items-center justify-center gap-1 cursor-pointer"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Re-use QR Pass</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setSelectedReg(null)}
+                className="py-2 px-4 rounded-xl bg-[#6D28D9] hover:bg-[#5B21B6] text-white font-bold text-xs shadow-xs cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ----------------- EDIT STUDENT REGISTRATION MODAL ----------------- */}
+      {editingReg && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
+          <div className="bg-white border border-[#E8E2D9] rounded-3xl p-6 max-w-lg w-full shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-[#E8E2D9]">
+              <div>
+                <h3 className="text-base font-bold text-[#29243A]">Edit Student Registration</h3>
+                <p className="text-[11px] text-[#6B655D]">Modify details & sync directly to Supabase cloud</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingReg(null)}
+                className="text-xs font-bold text-[#6B655D] hover:text-[#29243A] cursor-pointer"
+              >
+                Cancel
+              </button>
+            </div>
+
+            {editError && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-[#B91C1C] font-semibold">
+                {editError}
+              </div>
+            )}
+
+            <form onSubmit={handleSaveEditReg} className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-[#29243A] block">Student Full Name</label>
+                <input
+                  type="text"
+                  value={editForm.full_name}
+                  onChange={(e) => setEditForm((prev) => ({ ...prev, full_name: e.target.value }))}
+                  required
+                  placeholder="e.g. Rahul Sharma"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#FFFCF5] border border-[#E8E2D9] text-xs text-[#29243A] font-semibold focus:outline-none focus:border-[#6D28D9]"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-[#29243A] block">Roll Number</label>
+                  <input
+                    type="text"
+                    value={editForm.roll_number}
+                    onChange={(e) => setEditForm((prev) => ({ ...prev, roll_number: e.target.value }))}
+                    required
+                    placeholder="e.g. IT101 / DS202"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#FFFCF5] border border-[#E8E2D9] text-xs font-mono font-bold text-[#6D28D9] focus:outline-none focus:border-[#6D28D9]"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-[#29243A] block">Academic Year / Course</label>
+                  <select
+                    value={editForm.academic_year}
+                    onChange={(e) =>
+                      setEditForm((prev) => ({ ...prev, academic_year: e.target.value as AcademicYear }))
+                    }
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#FFFCF5] border border-[#E8E2D9] text-xs font-semibold text-[#29243A] focus:outline-none focus:border-[#6D28D9]"
+                  >
+                    <option value="FY - M.Sc.IT">FY - M.Sc.IT</option>
+                    <option value="FY - Data Science">FY - Data Science</option>
+                    <option value="SY - M.Sc.IT">SY - M.Sc.IT</option>
+                    <option value="SY - Data Science">SY - Data Science</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-[#29243A] block">Contact Number</label>
+                  <input
+                    type="tel"
+                    value={editForm.contact_number}
+                    onChange={(e) => setEditForm((prev) => ({ ...prev, contact_number: e.target.value }))}
+                    required
+                    placeholder="10-digit mobile number"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#FFFCF5] border border-[#E8E2D9] text-xs font-mono text-[#29243A] focus:outline-none focus:border-[#6D28D9]"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-[#29243A] block">Food Preference</label>
+                  <select
+                    value={editForm.food_preference}
+                    onChange={(e) =>
+                      setEditForm((prev) => ({ ...prev, food_preference: e.target.value as FoodPreference }))
+                    }
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#FFFCF5] border border-[#E8E2D9] text-xs font-semibold text-[#29243A] focus:outline-none focus:border-[#6D28D9]"
+                  >
+                    <option value="Regular">Regular Dinner</option>
+                    <option value="Jain">Jain Dinner</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-[#29243A] block">
+                  Stage Performance / Talent Participation
+                </label>
+                <input
+                  type="text"
+                  value={editForm.performance_talent}
+                  onChange={(e) => setEditForm((prev) => ({ ...prev, performance_talent: e.target.value }))}
+                  placeholder="e.g. Solo Singing, Garba Dance, Drama (or leave blank if none)"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#FFFCF5] border border-[#E8E2D9] text-xs text-[#29243A] focus:outline-none focus:border-[#6D28D9]"
+                />
+                <span className="text-[11px] text-[#6B655D] block">
+                  If student is performing on stage, specify their act or song/dance details.
+                </span>
+              </div>
+
+              <div className="flex items-center gap-3 pt-3">
+                <button
+                  type="button"
+                  onClick={() => setEditingReg(null)}
+                  className="flex-1 py-2.5 rounded-xl bg-[#FFFCF5] hover:bg-[#FFF0D9] text-[#29243A] font-bold text-xs border border-[#E8E2D9] cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingEdit}
+                  className="flex-1 py-2.5 rounded-xl bg-[#6D28D9] hover:bg-[#5B21B6] text-white font-bold text-xs shadow-xs cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
+                >
+                  {isSavingEdit ? (
+                    <span>Saving to Supabase...</span>
+                  ) : (
+                    <>
+                      <Check className="w-4 h-4" />
+                      <span>Save Changes</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

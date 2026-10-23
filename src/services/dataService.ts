@@ -14,6 +14,8 @@ import {
   UpdatePricingInput,
   Role,
   AuthResult,
+  AcademicYear,
+  FoodPreference,
 } from '../types';
 import { normalizeRollNumber, normalizeContactNumber, registrationSchema, manualPaymentClaimSchema, formatRollWithCoursePrefix } from '../lib/validation';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
@@ -637,6 +639,7 @@ class PreDiwaliDataStore {
           payment_status: newReg.payment_status,
           expected_amount_minor_units: newReg.expected_amount_minor_units,
           currency: newReg.currency,
+          performance_talent: newReg.performance_talent || null,
           created_at: newReg.created_at,
           updated_at: newReg.updated_at,
         });
@@ -690,11 +693,11 @@ class PreDiwaliDataStore {
 
   public async submitManualPaymentClaim(
     registrationId: string,
-    transactionReference: string,
+    transactionReference?: string,
     screenshotUrl?: string
   ): Promise<PaymentRecord> {
     const parsed = manualPaymentClaimSchema.parse({
-      transaction_reference: transactionReference,
+      transaction_reference: transactionReference || '',
       screenshot_url: screenshotUrl,
     });
     const reg = this.getRegistrationById(registrationId);
@@ -704,21 +707,23 @@ class PreDiwaliDataStore {
       throw new Error('This registration has already been verified and paid.');
     }
 
-    const ref = parsed.transaction_reference.toUpperCase();
+    const ref = (parsed.transaction_reference || '').trim().toUpperCase();
 
-    // Check if another payment has already used this reference ID
-    const duplicateRef = this.payments.find(
-      (p) => p.transaction_reference?.toUpperCase() === ref && p.registration_id !== registrationId
-    );
-    if (duplicateRef) {
-      throw new Error('This transaction reference ID has already been submitted for another registration.');
+    // Check if another payment has already used this reference ID (only if provided)
+    if (ref) {
+      const duplicateRef = this.payments.find(
+        (p) => p.transaction_reference?.toUpperCase() === ref && p.registration_id !== registrationId
+      );
+      if (duplicateRef) {
+        throw new Error('This transaction reference ID has already been submitted for another registration.');
+      }
     }
 
     if (reg.payment_status === 'PENDING' && reg.expected_amount_minor_units === 25000) {
       reg.expected_amount_minor_units = this.event.registration_fee_minor_units || 30000;
     }
 
-    const cleanRef = ref.trim().slice(0, 12);
+    const cleanRef = ref ? ref.slice(0, 25) : undefined;
     let payment = this.getPaymentForRegistration(registrationId);
     const now = new Date().toISOString();
 
@@ -1063,6 +1068,94 @@ class PreDiwaliDataStore {
     this.addAuditLog(adminId, 'REISSUE_PASS', 'entry_pass', newPass.id, `Reissued pass. Old Pass: ${oldPassId}. Reason: ${reason}`);
     this.persist();
     return newPass;
+  }
+
+  public async reactivateUsedPassAdmin(passId: string, adminId: string, reason: string = 'Admin allowed re-entry / pass re-use'): Promise<EntryPass> {
+    const pass = this.passes.find((p) => p.id === passId);
+    if (!pass) throw new Error('Pass not found');
+
+    const admin = this.profiles.find((p) => p.id === adminId && p.role === 'ADMIN');
+    if (!admin) throw new Error('Unauthorized');
+
+    pass.status = 'VALID';
+    pass.redeemed_at = undefined;
+    pass.redeemed_by = undefined;
+
+    this.addAuditLog(adminId, 'REACTIVATE_PASS', 'entry_pass', passId, reason);
+    this.persist();
+
+    // Supabase cloud sync
+    if (isSupabaseConfigured && supabase) {
+      try {
+        await supabase
+          .from('entry_passes')
+          .update({
+            status: 'VALID',
+            redeemed_at: null,
+            redeemed_by: null,
+          })
+          .eq('id', passId);
+      } catch (err) {
+        console.warn('Supabase reactivateUsedPass sync error:', err);
+      }
+    }
+
+    return pass;
+  }
+
+  public async updateRegistrationAdmin(
+    adminId: string,
+    registrationId: string,
+    updates: {
+      full_name: string;
+      roll_number: string;
+      academic_year: AcademicYear;
+      contact_number: string;
+      food_preference: FoodPreference;
+      performance_talent?: string;
+    }
+  ): Promise<Registration> {
+    const admin = this.profiles.find((p) => p.id === adminId && p.role === 'ADMIN');
+    if (!admin) throw new Error('Unauthorized');
+
+    const reg = this.registrations.find((r) => r.id === registrationId);
+    if (!reg) throw new Error('Registration record not found');
+
+    const prefixedRoll = formatRollWithCoursePrefix(updates.roll_number, updates.academic_year);
+    const cleanPhone = normalizeContactNumber(updates.contact_number);
+
+    reg.full_name = updates.full_name.trim();
+    reg.normalized_roll_number = prefixedRoll;
+    reg.academic_year = updates.academic_year;
+    reg.contact_number = cleanPhone;
+    reg.food_preference = updates.food_preference;
+    reg.performance_talent = updates.performance_talent ? updates.performance_talent.trim() : undefined;
+    reg.updated_at = new Date().toISOString();
+
+    this.addAuditLog(adminId, 'UPDATE_STUDENT', 'registration', registrationId, `Admin edited details for ${prefixedRoll}`);
+    this.persist();
+
+    // Supabase cloud sync
+    if (isSupabaseConfigured && supabase) {
+      try {
+        await supabase
+          .from('registrations')
+          .update({
+            full_name: reg.full_name,
+            normalized_roll_number: reg.normalized_roll_number,
+            academic_year: reg.academic_year,
+            contact_number: reg.contact_number,
+            food_preference: reg.food_preference,
+            performance_talent: reg.performance_talent,
+            updated_at: reg.updated_at,
+          })
+          .eq('id', registrationId);
+      } catch (err) {
+        console.warn('Supabase updateRegistrationAdmin sync error:', err);
+      }
+    }
+
+    return reg;
   }
 
   // -------------------------------------------------------------------------

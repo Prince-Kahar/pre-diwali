@@ -105,23 +105,10 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   const handleManualClaimSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanRef = transactionRef.trim();
-    if (!cleanRef) {
-      setErrorMsg('Please enter your 12-digit UPI Reference / UTR Number');
-      return;
-    }
 
-    if (cleanRef.length > 12) {
-      setErrorMsg('UPI Reference / UTR Number cannot exceed 12 digits');
-      return;
-    }
-
-    if (cleanRef.length < 8) {
-      setErrorMsg('UPI Reference / UTR Number must be at least 8 digits (standard UPI reference is 12 digits)');
-      return;
-    }
-
-    if (!/^[a-zA-Z0-9]{8,12}$/.test(cleanRef)) {
-      setErrorMsg('UPI Reference / UTR must be 8 to 12 alphanumeric characters / digits');
+    // Reference ID is optional. If provided, validate length
+    if (cleanRef && cleanRef.length > 25) {
+      setErrorMsg('UPI Reference / UTR Number cannot exceed 25 characters');
       return;
     }
 
@@ -288,32 +275,24 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                 <form onSubmit={handleManualClaimSubmit} className="space-y-4">
                   <div className="space-y-1.5">
                     <label className="text-xs font-bold text-[#29243A] block">
-                      Enter UPI Reference / UTR / Transaction ID <span className="text-[#E99A20]">*</span>
+                      Enter UPI Reference / UTR / Transaction ID
                     </label>
                     <div className="relative">
                       <input
                         type="text"
-                        maxLength={12}
+                        maxLength={25}
                         placeholder="e.g. 12-digit UTR (123456789012)"
                         value={transactionRef}
                         onChange={(e) => {
-                          const val = e.target.value.replace(/[^a-zA-Z0-9]/g, '').slice(0, 12);
+                          const val = e.target.value.replace(/[^a-zA-Z0-9]/g, '').slice(0, 25);
                           setTransactionRef(val);
                           if (errorMsg) setErrorMsg(null);
                         }}
-                        className="w-full px-4 py-3 rounded-xl bg-[#FFFCF5] border border-[#E8E2D9] text-[#29243A] placeholder-[#6B655D]/60 focus:outline-none focus:border-[#6D28D9] focus:ring-1 focus:ring-[#6D28D9] text-sm font-mono font-medium pr-16"
+                        className="w-full px-4 py-3 rounded-xl bg-[#FFFCF5] border border-[#E8E2D9] text-[#29243A] placeholder-[#6B655D]/60 focus:outline-none focus:border-[#6D28D9] focus:ring-1 focus:ring-[#6D28D9] text-sm font-mono font-medium"
                       />
-                      <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-mono font-bold text-[#6B655D]">
-                        {transactionRef.length}/12
-                      </span>
                     </div>
                     <div className="flex justify-between items-center text-[11px] text-[#6B655D]">
-                      <span>Enter the 12-digit number from your UPI app receipt (Max 12 digits).</span>
-                      {transactionRef.length === 12 ? (
-                        <span className="text-[#15803D] font-bold">12 digits entered</span>
-                      ) : transactionRef.length > 0 ? (
-                        <span className="text-[#B45309] font-medium">{12 - transactionRef.length} digits left</span>
-                      ) : null}
+                      <span>Enter the reference number from your UPI app receipt if available.</span>
                     </div>
                   </div>
 
@@ -323,7 +302,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                       <label className="text-xs font-bold text-[#29243A] flex items-center gap-1.5">
                         <ImageIcon className="w-4 h-4 text-[#6D28D9]" />
                         <span>Payment Screenshot</span>
-                        <span className="text-[#B91C1C] font-bold text-[11px]">(Compulsory *)</span>
+                        <span className="text-[#B91C1C] font-bold text-[11px]">(*)</span>
                       </label>
                       {screenshotPreview && (
                         <button

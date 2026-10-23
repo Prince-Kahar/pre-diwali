@@ -88,9 +88,9 @@ export const manualPaymentClaimSchema = z.object({
   transaction_reference: z
     .string()
     .trim()
-    .min(8, 'UPI Reference / UTR number must be at least 8 digits')
-    .max(12, 'UPI Reference / UTR number cannot exceed 12 digits')
-    .regex(/^[a-zA-Z0-9]{8,12}$/, 'UPI Reference must be 8 to 12 alphanumeric characters / digits (max 12 digits)'),
+    .max(25, 'UPI Reference / UTR number cannot exceed 25 characters')
+    .optional()
+    .or(z.literal('')),
   screenshot_url: z
     .string()
     .min(1, 'Payment screenshot is compulsory. Please upload your payment screenshot.')
