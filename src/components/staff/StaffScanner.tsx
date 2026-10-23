@@ -61,6 +61,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
 
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const cooldownRef = useRef(false);
+  const recentlyProcessedTokensRef = useRef<Map<string, number>>(new Map());
 
   useEffect(() => {
     loadStaffScans();
@@ -138,12 +139,24 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
         },
         async (decodedText) => {
           if (cooldownRef.current || isProcessing) return;
+          const cleanToken = decodedText.trim();
+          if (!cleanToken) return;
+
+          // Prevent accidental instant duplicate auto-scans for the same token
+          const now = Date.now();
+          const lastTime = recentlyProcessedTokensRef.current.get(cleanToken);
+          if (lastTime && now - lastTime < 15000) {
+            return;
+          }
+
           cooldownRef.current = true;
-          await handleProcessToken(decodedText);
-          // 2-second cooldown to prevent double scans
-          setTimeout(() => {
-            cooldownRef.current = false;
-          }, 2000);
+          recentlyProcessedTokensRef.current.set(cleanToken, now);
+
+          // STOP CAMERA IMMEDIATELY: Ensure strict 1-time check and NEVER auto-scan again
+          await stopCamera();
+
+          // Process the single verified scan
+          await handleProcessToken(cleanToken);
         },
         () => {
           // ignore scan errors/frame skips
@@ -217,16 +230,20 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
   const handleManualSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!manualToken.trim()) return;
-    await handleProcessToken(manualToken.trim());
+    const clean = manualToken.trim();
+    await stopCamera();
+    await handleProcessToken(clean);
     setManualToken('');
     setShowManualInput(false);
   };
 
   const resetForNextScan = () => {
     setScanResult(null);
-    if (!isScanning) {
+    cooldownRef.current = false;
+    // Allow DOM to re-render the camera container before starting
+    setTimeout(() => {
       startCamera();
-    }
+    }, 150);
   };
 
   // Determine status color theme based on Requirement 7

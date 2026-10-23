@@ -786,8 +786,10 @@ class PreDiwaliDataStore {
       throw new Error('Cannot issue entry pass for unpaid registration');
     }
 
-    // Check if valid pass already exists
-    const existing = this.passes.find((p) => p.registration_id === registrationId && p.status === 'VALID');
+    // Check if pass already exists (VALID or USED) - strict one-time pass guarantee
+    const existing = this.passes.find(
+      (p) => p.registration_id === registrationId && (p.status === 'VALID' || p.status === 'USED')
+    );
     if (existing) {
       return existing;
     }
