@@ -168,7 +168,10 @@ class PreDiwaliDataStore {
               !item.id.startsWith('reg-seed-') &&
               !item.id.toLowerCase().includes('dummy') &&
               !item.normalized_roll_number.toLowerCase().includes('dummy') &&
-              !item.full_name.toLowerCase().includes('dummy')
+              !item.full_name.toLowerCase().includes('dummy') &&
+              !item.normalized_roll_number.includes('TEST_ROLL_') &&
+              !item.normalized_roll_number.includes('UNPAID_ROLL_') &&
+              !item.normalized_roll_number.includes('_PRICE_')
           )
           .map((item: Registration) => {
             if (item.expected_amount_minor_units === 25000) {
@@ -1538,8 +1541,21 @@ class PreDiwaliDataStore {
 
       // 2. Fetch Registrations from Supabase and sync
       const { data: regRows } = await supabase.from('registrations').select('*');
-      if (regRows && regRows.length > 0) {
+      if (regRows) {
+        const fetchedRegs: Registration[] = [];
         for (const row of regRows) {
+          // Skip dummy entries
+          if (
+            row.id.toLowerCase().includes('dummy') ||
+            row.id.startsWith('reg-seed-') ||
+            row.full_name.toLowerCase().includes('dummy') ||
+            row.normalized_roll_number.includes('TEST_ROLL_') ||
+            row.normalized_roll_number.includes('UNPAID_ROLL_') ||
+            row.normalized_roll_number.includes('_PRICE_')
+          ) {
+            continue;
+          }
+
           // Authoritative Roll formatting: ensure IT or DS prefix in Supabase
           const prefixedRoll = formatRollWithCoursePrefix(row.normalized_roll_number, row.academic_year);
           if (row.normalized_roll_number !== prefixedRoll) {
@@ -1551,8 +1567,7 @@ class PreDiwaliDataStore {
             }
           }
 
-          const idx = this.registrations.findIndex((r) => r.id === row.id);
-          const mappedReg: Registration = {
+          fetchedRegs.push({
             id: row.id,
             event_id: row.event_id,
             full_name: row.full_name,
@@ -1567,21 +1582,18 @@ class PreDiwaliDataStore {
             performance_talent: row.performance_talent || undefined,
             created_at: row.created_at,
             updated_at: row.updated_at,
-          };
-          if (idx >= 0) {
-            this.registrations[idx] = { ...this.registrations[idx], ...mappedReg };
-          } else {
-            this.registrations.push(mappedReg);
-          }
+          });
         }
+        this.registrations = fetchedRegs;
       }
 
       // 3. Fetch Payments from Supabase and sync
       const { data: payRows } = await supabase.from('payments').select('*');
-      if (payRows && payRows.length > 0) {
+      if (payRows) {
+        const fetchedPays: PaymentRecord[] = [];
         for (const row of payRows) {
-          const idx = this.payments.findIndex((p) => p.id === row.id);
-          const mappedPay: PaymentRecord = {
+          if (row.id.toLowerCase().includes('dummy') || row.id.startsWith('pay-seed-')) continue;
+          fetchedPays.push({
             id: row.id,
             registration_id: row.registration_id,
             provider: row.provider || 'STATIC_UPI',
@@ -1600,12 +1612,7 @@ class PreDiwaliDataStore {
             admin_notes: row.admin_notes || undefined,
             created_at: row.created_at,
             updated_at: row.updated_at,
-          };
-          if (idx >= 0) {
-            this.payments[idx] = { ...this.payments[idx], ...mappedPay };
-          } else {
-            this.payments.push(mappedPay);
-          }
+          });
 
           // Authoritative link: align registration payment_status with payment status
           const matchingReg = this.registrations.find((r) => r.id === row.registration_id);
@@ -1613,14 +1620,16 @@ class PreDiwaliDataStore {
             matchingReg.payment_status = row.status;
           }
         }
+        this.payments = fetchedPays;
       }
 
       // 4. Fetch Entry Passes from Supabase
       const { data: passRows } = await supabase.from('entry_passes').select('*');
-      if (passRows && passRows.length > 0) {
+      if (passRows) {
+        const fetchedPasses: EntryPass[] = [];
         for (const row of passRows) {
-          const idx = this.passes.findIndex((p) => p.id === row.id);
-          const mappedPass: EntryPass = {
+          if (row.id.toLowerCase().includes('dummy') || row.id.startsWith('pass-seed-')) continue;
+          fetchedPasses.push({
             id: row.id,
             registration_id: row.registration_id,
             token_hash: row.token_hash,
@@ -1630,84 +1639,29 @@ class PreDiwaliDataStore {
             redeemed_by: row.redeemed_by || undefined,
             revoked_at: row.revoked_at || undefined,
             replacement_of_pass_id: row.replacement_of_pass_id || undefined,
-          };
-          if (idx >= 0) {
-            this.passes[idx] = { ...this.passes[idx], ...mappedPass };
-          } else {
-            this.passes.push(mappedPass);
-          }
+          });
         }
+        this.passes = fetchedPasses;
       }
 
       // 5. Fetch Scans from Supabase
       const { data: scanRows } = await supabase.from('entry_scans').select('*');
-      if (scanRows && scanRows.length > 0) {
+      if (scanRows) {
+        const fetchedScans: EntryScanLog[] = [];
         for (const row of scanRows) {
-          if (!this.scans.find((s) => s.id === row.id)) {
-            this.scans.push({
-              id: row.id,
-              event_id: row.event_id,
-              pass_id: row.pass_id || undefined,
-              staff_user_id: row.staff_user_id,
-              staff_name: 'Staff Scanner',
-              scan_result: row.scan_result,
-              scanned_at: row.created_at || row.scanned_at || new Date().toISOString(),
-              request_id: row.request_id || undefined,
-            });
-          }
+          if (row.id.toLowerCase().includes('dummy') || row.id.startsWith('scan-seed-')) continue;
+          fetchedScans.push({
+            id: row.id,
+            event_id: row.event_id,
+            pass_id: row.pass_id || undefined,
+            staff_user_id: row.staff_user_id,
+            staff_name: 'Staff Scanner',
+            scan_result: row.scan_result,
+            scanned_at: row.created_at || row.scanned_at || new Date().toISOString(),
+            request_id: row.request_id || undefined,
+          });
         }
-      }
-
-      // 6. Push local registrations missing from Supabase (Bidirectional sync)
-      for (const localReg of this.registrations) {
-        if (!regRows || !regRows.some((r) => r.id === localReg.id)) {
-          try {
-            await supabase.from('registrations').upsert({
-              id: localReg.id,
-              event_id: localReg.event_id,
-              full_name: localReg.full_name,
-              academic_year: localReg.academic_year,
-              food_preference: localReg.food_preference,
-              contact_number: localReg.contact_number,
-              normalized_roll_number: localReg.normalized_roll_number,
-              consent_agreed: localReg.consent_agreed,
-              payment_status: localReg.payment_status,
-              expected_amount_minor_units: localReg.expected_amount_minor_units,
-              currency: localReg.currency,
-              performance_talent: localReg.performance_talent,
-              created_at: localReg.created_at,
-              updated_at: localReg.updated_at,
-            });
-          } catch (e) {
-            console.warn('Bidirectional reg push notice:', e);
-          }
-        }
-      }
-
-      // 7. Push local payments missing from Supabase
-      for (const localPay of this.payments) {
-        if (!payRows || !payRows.some((p) => p.id === localPay.id)) {
-          try {
-            await supabase.from('payments').upsert({
-              id: localPay.id,
-              registration_id: localPay.registration_id,
-              provider: localPay.provider,
-              transaction_reference: localPay.transaction_reference,
-              screenshot_url: localPay.screenshot_url,
-              expected_amount_minor_units: localPay.expected_amount_minor_units,
-              currency: localPay.currency,
-              status: localPay.status,
-              verification_method: localPay.verification_method,
-              verified_by: localPay.verified_by,
-              verified_at: localPay.verified_at,
-              admin_notes: localPay.admin_notes,
-              created_at: localPay.created_at,
-              updated_at: localPay.updated_at,
-            });
-          } catch (e) {
-            console.warn('Bidirectional pay push notice:', e);
-          }
-        }
+        this.scans = fetchedScans;
       }
 
       this.persist();

@@ -8,7 +8,7 @@ interface AdminLoginProps {
 }
 
 export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess }) => {
-  const [username, setUsername] = useState('Admin');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -62,7 +62,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess }) => {
             </label>
             <input
               type="text"
-              placeholder="e.g. admin"
+              placeholder="Enter username"
               value={username}
               onChange={(e) => {
                 setUsername(e.target.value);
@@ -78,7 +78,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess }) => {
             </label>
             <input
               type="password"
-              placeholder="Enter password (Admin@123!123)"
+              placeholder="Enter password"
               value={password}
               onChange={(e) => {
                 setPassword(e.target.value);
@@ -103,11 +103,6 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess }) => {
             </button>
           </div>
         </form>
-
-        <div className="p-3.5 rounded-xl bg-[#FFF0D9] border border-[#E8E2D9] text-xs text-[#29243A] text-center space-y-0.5">
-          <span className="block text-[11px] font-bold text-[#6B655D] uppercase tracking-wider">Dynamic Admin Credentials</span>
-          <p>Username: <span className="text-[#6D28D9] font-mono font-bold">Admin</span> | Password: <span className="text-[#6D28D9] font-mono font-bold">Admin@123!123</span></p>
-        </div>
       </div>
     </div>
   );
