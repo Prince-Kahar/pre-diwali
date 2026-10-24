@@ -50,25 +50,27 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
       : registration.expected_amount_minor_units;
   const amountRupees = (feeMinor / 100).toFixed(2);
   const cleanUpiId = (event.payment_upi_id || 'madhavikalathiya19@oksbi').trim();
-  const cleanUpiName = (event.payment_upi_name || 'Madhavi Kalathiya').trim();
-  // Standard NPCI UPI URI specification with Google Pay aid parameter for universal recognition
-  const upiQuery = `pa=${cleanUpiId}&pn=${encodeURIComponent(cleanUpiName)}&aid=uGICAgOCKiNP4GQ&am=${amountRupees}&cu=${registration.currency || 'INR'}&tn=PreDiwali`;
+  const cleanUpiName = (event.payment_upi_name || '2022_ Madhavi').trim();
+  // Standard NPCI UPI URI specification with exact ₹300.00 pre-filled parameter
+  const upiQuery = `pa=${cleanUpiId}&pn=${encodeURIComponent(cleanUpiName)}&am=${amountRupees}&cu=${registration.currency || 'INR'}&tn=PreDiwali`;
   const upiIntent = `upi://pay?${upiQuery}`;
 
   const downloadQrCode = () => {
+    if (!upiQrDataUrl) return;
     const a = document.createElement('a');
-    a.href = paymentQrImage || upiQrDataUrl;
-    a.download = `PreDiwali_GPay_QR_madhavikalathiya19.png`;
+    a.href = upiQrDataUrl;
+    a.download = `PreDiwali_Payment_QR_300.png`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
   };
 
   useEffect(() => {
-    // Generate UPI QR Code image
+    // Generate pure clean high-res QR code encoding ₹300.00
     QRCode.toDataURL(upiIntent, {
-      width: 280,
-      margin: 1.5,
+      width: 360,
+      margin: 1,
+      errorCorrectionLevel: 'M',
       color: {
         dark: '#29243A',
         light: '#FFFFFF',
@@ -293,20 +295,26 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                 {/* Left Column: QR Code & Pay Now Button (lg:col-span-6) */}
                 <div className="lg:col-span-6 flex flex-col items-center justify-center space-y-4 p-4 sm:p-5 rounded-2xl bg-[#FFFCF5] border border-[#E8E2D9]">
                     <div className="flex flex-col items-center gap-2.5 w-full">
-                      <div className="p-2 sm:p-2.5 bg-white rounded-2xl border border-[#E8E2D9] shadow-xs max-w-[220px] sm:max-w-[250px]">
-                        <img
-                          src={paymentQrImage}
-                          alt="GPay UPI QR - madhavikalathiya19@oksbi"
-                          className="w-full h-auto rounded-xl object-contain shadow-2xs"
-                        />
-                      </div>
+                      {upiQrDataUrl ? (
+                        <div className="p-3.5 bg-white rounded-2xl border border-[#E8E2D9] shadow-xs">
+                          <img
+                            src={upiQrDataUrl}
+                            alt="Pre-Diwali ₹300 UPI QR Code"
+                            className="w-48 h-48 sm:w-56 sm:h-56 rounded-lg object-contain"
+                          />
+                        </div>
+                      ) : (
+                        <div className="w-48 h-48 sm:w-56 sm:h-56 bg-[#FFF0D9] rounded-2xl flex items-center justify-center">
+                          <Loader2 className="w-8 h-8 animate-spin text-[#E99A20]" />
+                        </div>
+                      )}
                       <button
                         type="button"
                         onClick={downloadQrCode}
                         className="py-2 px-3.5 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-950 font-bold text-xs flex items-center gap-1.5 cursor-pointer transition-colors shadow-2xs"
                       >
                         <Download className="w-3.5 h-3.5 text-amber-800" />
-                        <span>Download QR (Scan from Gallery)</span>
+                        <span>Download QR (₹300 Auto Set)</span>
                       </button>
                     </div>
 
@@ -346,24 +354,24 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                       <span>⚡ Pay Now (Open Any UPI App)</span>
                     </button>
 
-                    {/* Dedicated Direct BHIM App Button */}
+                    {/* Dedicated BHIM & Gallery Scan Buttons */}
                     <div className="grid grid-cols-2 gap-2 w-full">
                       <button
                         type="button"
                         onClick={() => handleTriggerUpi('bhim')}
-                        className="py-2 px-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-colors shadow-2xs"
-                        title="Direct launch into official BHIM UPI app"
+                        className="py-2.5 px-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-colors shadow-2xs"
+                        title="Open in BHIM UPI App"
                       >
                         <span>🇮🇳 Open in BHIM</span>
                       </button>
                       <button
                         type="button"
                         onClick={downloadQrCode}
-                        className="py-2 px-2 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-colors shadow-2xs"
-                        title="Download QR code to scan from BHIM or phone gallery"
+                        className="py-2.5 px-2 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-colors shadow-2xs"
+                        title="Save clean QR with ₹300 preset to scan from BHIM gallery"
                       >
                         <Download className="w-3.5 h-3.5 text-amber-700" />
-                        <span>Scan via Gallery</span>
+                        <span>Scan via Gallery (₹300)</span>
                       </button>
                     </div>
 
@@ -383,13 +391,13 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                         <span>ℹ️ Quick Payment Tips:</span>
                       </p>
                       <p className="text-amber-800 text-[10px] leading-relaxed">
-                        • <strong>Mobile:</strong> Tap <strong>"Pay Now"</strong> above to choose any UPI app installed on your phone.
+                        • <strong>PhonePe / GPay / Paytm:</strong> Tap <strong>"Pay Now"</strong> above to pay ₹{amountRupees} with 1-tap.
                       </p>
                       <p className="text-amber-800 text-[10px] leading-relaxed">
-                        • <strong>BHIM App:</strong> Tap <strong>"Open in BHIM"</strong>, OR tap <strong>"Scan via Gallery"</strong> (open BHIM → tap Scan → Gallery → select downloaded QR).
+                        • <strong>BHIM App (If redirect is blocked by your device):</strong> Tap <strong>"Scan via Gallery (₹300)"</strong> (saves QR with ₹300 pre-set) → Open BHIM → Tap <strong>Scan</strong> → Tap <strong>Gallery</strong> → Select saved QR. ₹{amountRupees} is pre-filled automatically!
                       </p>
                       <p className="text-amber-800 text-[10px] leading-relaxed">
-                        • <strong>Manual BHIM Transfer:</strong> Copy UPI ID (<span className="font-mono font-bold">{cleanUpiId}</span>) → in BHIM tap Send → enter ₹{amountRupees}.
+                        • <strong>Or in BHIM:</strong> Tap <strong>Send</strong> → enter <span className="font-mono font-bold select-all">{cleanUpiId}</span> → enter ₹{amountRupees}.
                       </p>
                       <p className="text-amber-800 text-[10px] leading-relaxed">
                         • <strong>After Payment:</strong> Enter your 12-digit UTR/Ref ID and attach the payment screenshot on the right.
