@@ -116,18 +116,22 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
     setTimeout(() => setCopiedUpi(false), 2500);
   };
 
-  const handleTriggerUpi = () => {
-    // Universal standard NPCI UPI URI - natively opens system chooser for ALL UPI apps
-    try {
-      const link = document.createElement('a');
-      link.href = upiIntent;
-      link.rel = 'noreferrer noopener';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    } catch {
-      window.location.href = upiIntent;
+  const handleTriggerUpi = (targetApp: 'any' | 'bhim' = 'any') => {
+    const isAndroid = /android/i.test(navigator.userAgent);
+    let targetUrl = upiIntent;
+
+    if (isAndroid) {
+      if (targetApp === 'bhim') {
+        // Direct launch into BHIM app via official NPCI package
+        targetUrl = `intent://pay?pa=${cleanUpiId}&pn=${encodeURIComponent(cleanUpiName)}&am=${amountRupees}&cu=INR&tn=PreDiwali#Intent;scheme=upi;package=in.org.npci.upiapp;end;`;
+      } else {
+        // Standard Android Intent syntax recognized by Chrome to open system UPI chooser
+        targetUrl = `intent://pay?pa=${cleanUpiId}&pn=${encodeURIComponent(cleanUpiName)}&am=${amountRupees}&cu=INR&tn=PreDiwali#Intent;scheme=upi;end;`;
+      }
     }
+
+    // Direct single navigation without event collision
+    window.location.href = targetUrl;
   };
 
   const handleScreenshotSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -339,14 +343,35 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
 
                   {/* PROMINENT PAY NOW BUTTON FOR ALL UPI APPS */}
                   <div className="w-full space-y-2.5 pt-1">
-                    <a
-                      href={upiIntent}
-                      onClick={handleTriggerUpi}
+                    <button
+                      type="button"
+                      onClick={() => handleTriggerUpi('any')}
                       className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-[#6D28D9] via-[#8B5CF6] to-[#E99A20] hover:from-[#5B21B6] hover:to-[#D97706] text-white font-black text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer text-center group active:scale-[0.99]"
                     >
                       <Zap className="w-4 h-4 fill-current text-amber-300 animate-pulse group-hover:scale-110 transition-transform" />
                       <span>⚡ Pay Now (Open Any UPI App)</span>
-                    </a>
+                    </button>
+
+                    {/* Dedicated Direct BHIM App Button */}
+                    <div className="grid grid-cols-2 gap-2 w-full">
+                      <button
+                        type="button"
+                        onClick={() => handleTriggerUpi('bhim')}
+                        className="py-2 px-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-colors shadow-2xs"
+                        title="Direct launch into official BHIM UPI app"
+                      >
+                        <span>🇮🇳 Open in BHIM</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={downloadQrCode}
+                        className="py-2 px-2 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-colors shadow-2xs"
+                        title="Download QR code to scan from BHIM or phone gallery"
+                      >
+                        <Download className="w-3.5 h-3.5 text-amber-700" />
+                        <span>Scan via Gallery</span>
+                      </button>
+                    </div>
 
                     {/* Supported Apps Badges */}
                     <div className="p-2.5 rounded-xl bg-purple-50/70 border border-purple-200/60 text-center">
@@ -367,7 +392,10 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                         • <strong>Mobile:</strong> Tap <strong>"Pay Now"</strong> above to choose any UPI app installed on your phone.
                       </p>
                       <p className="text-amber-800 text-[10px] leading-relaxed">
-                        • <strong>Laptop/Desktop:</strong> Open your favorite UPI app and scan the QR code above.
+                        • <strong>BHIM App:</strong> Tap <strong>"Open in BHIM"</strong>, OR tap <strong>"Scan via Gallery"</strong> (open BHIM → tap Scan → Gallery → select downloaded QR).
+                      </p>
+                      <p className="text-amber-800 text-[10px] leading-relaxed">
+                        • <strong>Manual BHIM Transfer:</strong> Copy UPI ID (<span className="font-mono font-bold">{cleanUpiId}</span>) → in BHIM tap Send → enter ₹{amountRupees}.
                       </p>
                       <p className="text-amber-800 text-[10px] leading-relaxed">
                         • <strong>After Payment:</strong> Enter your 12-digit UTR/Ref ID and attach the payment screenshot on the right.
