@@ -1129,6 +1129,124 @@ class PreDiwaliDataStore {
     return payment;
   }
 
+  public async clearPaymentsByStatusAdmin(
+    statusFilter: 'ALL' | 'PENDING' | 'PAID' | 'REJECTED',
+    adminId: string
+  ): Promise<{ clearedCount: number }> {
+    const admin = this.profiles.find((p) => p.id === adminId && p.role === 'ADMIN');
+    if (!admin) throw new Error('Unauthorized: only active admins can clear payments');
+
+    const targets = this.payments.filter((p) => {
+      if (statusFilter === 'ALL') return true;
+      return p.status === statusFilter;
+    });
+
+    const targetIds = targets.map((p) => p.id);
+    const targetRegIds = Array.from(new Set(targets.map((p) => p.registration_id)));
+
+    if (targetIds.length === 0) {
+      return { clearedCount: 0 };
+    }
+
+    // 1. Remove from local payments array
+    this.payments = this.payments.filter((p) => !targetIds.includes(p.id));
+
+    // 2. If clearing PAID or ALL, also remove associated entry passes
+    if (statusFilter === 'PAID' || statusFilter === 'ALL') {
+      this.passes = this.passes.filter((pass) => !targetRegIds.includes(pass.registration_id));
+    }
+
+    // 3. Reset registration payment_status to PENDING
+    const now = new Date().toISOString();
+    for (const regId of targetRegIds) {
+      const reg = this.registrations.find((r) => r.id === regId);
+      if (reg) {
+        reg.payment_status = 'PENDING';
+        reg.updated_at = now;
+      }
+    }
+
+    this.addAuditLog(
+      adminId,
+      'CLEAR_PAYMENTS',
+      'payment',
+      statusFilter,
+      `Admin cleared all ${statusFilter} payments (${targetIds.length} records removed)`
+    );
+
+    this.persist();
+
+    // 4. Supabase cloud sync
+    if (isSupabaseConfigured && supabase) {
+      try {
+        await supabase.from('payments').delete().in('id', targetIds);
+
+        if (statusFilter === 'PAID' || statusFilter === 'ALL') {
+          await supabase.from('entry_passes').delete().in('registration_id', targetRegIds);
+        }
+
+        await supabase
+          .from('registrations')
+          .update({ payment_status: 'PENDING', updated_at: now })
+          .in('id', targetRegIds);
+      } catch (err) {
+        console.warn('Supabase clearPayments error:', err);
+      }
+    }
+
+    return { clearedCount: targetIds.length };
+  }
+
+  public async deletePaymentAdmin(paymentId: string, adminId: string): Promise<boolean> {
+    const admin = this.profiles.find((p) => p.id === adminId && p.role === 'ADMIN');
+    if (!admin) throw new Error('Unauthorized: only active admins can delete payments');
+
+    const payment = this.payments.find((p) => p.id === paymentId);
+    if (!payment) return false;
+
+    const regId = payment.registration_id;
+    const isPaid = payment.status === 'PAID';
+
+    this.payments = this.payments.filter((p) => p.id !== paymentId);
+
+    if (isPaid) {
+      this.passes = this.passes.filter((pass) => pass.registration_id !== regId);
+    }
+
+    const now = new Date().toISOString();
+    const reg = this.registrations.find((r) => r.id === regId);
+    if (reg) {
+      reg.payment_status = 'PENDING';
+      reg.updated_at = now;
+    }
+
+    this.addAuditLog(
+      adminId,
+      'DELETE_PAYMENT',
+      'payment',
+      paymentId,
+      `Admin deleted payment record ${paymentId}`
+    );
+
+    this.persist();
+
+    if (isSupabaseConfigured && supabase) {
+      try {
+        await supabase.from('payments').delete().eq('id', paymentId);
+        if (isPaid) {
+          await supabase.from('entry_passes').delete().eq('registration_id', regId);
+        }
+        if (reg) {
+          await supabase.from('registrations').update({ payment_status: 'PENDING', updated_at: now }).eq('id', regId);
+        }
+      } catch (err) {
+        console.warn('Supabase deletePayment error:', err);
+      }
+    }
+
+    return true;
+  }
+
   public async issueEntryPass(registrationId: string): Promise<EntryPass> {
     const reg = this.getRegistrationById(registrationId);
     if (!reg) throw new Error('Registration not found');

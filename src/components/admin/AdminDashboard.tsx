@@ -35,6 +35,7 @@ import {
   RotateCcw,
   Copy,
   X,
+  Trash2,
 } from 'lucide-react';
 import {
   EventSettings,
@@ -437,6 +438,63 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       refreshAll();
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Failed to reject payment');
+    }
+  };
+
+  // Clear all payments based on active status tab (Pending / Paid / Rejected / All)
+  const [isClearingPayments, setIsClearingPayments] = useState(false);
+
+  const handleClearAllPaymentsByStatus = async () => {
+    const label =
+      paymentStatusFilter === 'PENDING'
+        ? 'all PENDING payments in queue'
+        : paymentStatusFilter === 'PAID'
+        ? 'all VERIFIED / PAID payments'
+        : paymentStatusFilter === 'REJECTED'
+        ? 'all REJECTED payments'
+        : 'ALL payment records';
+
+    const count =
+      paymentStatusFilter === 'PENDING'
+        ? pendingPaymentsCount
+        : paymentStatusFilter === 'PAID'
+        ? paidPaymentsCount
+        : paymentStatusFilter === 'REJECTED'
+        ? rejectedPaymentsCount
+        : allPayments.length;
+
+    if (count === 0) {
+      alert(`There are currently no ${paymentStatusFilter === 'ALL' ? '' : paymentStatusFilter.toLowerCase()} payments to clear.`);
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Are you sure you want to CLEAR ${label}? ${count} record${count > 1 ? 's' : ''} will be permanently deleted.`
+    );
+    if (!confirmed) return;
+
+    setIsClearingPayments(true);
+    try {
+      const res = await dataService.clearPaymentsByStatusAdmin(paymentStatusFilter, adminUser.id);
+      refreshAll();
+      alert(`Successfully cleared ${res.clearedCount} payment record(s)!`);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to clear payments');
+    } finally {
+      setIsClearingPayments(false);
+    }
+  };
+
+  const handleDeleteSinglePayment = async (paymentId: string, utrOrRef: string) => {
+    const confirmed = window.confirm(
+      `Delete payment record (${utrOrRef})? This will remove this payment submission.`
+    );
+    if (!confirmed) return;
+    try {
+      await dataService.deletePaymentAdmin(paymentId, adminUser.id);
+      refreshAll();
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to delete payment');
     }
   };
 
@@ -1916,15 +1974,35 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                   <button
                     type="button"
-                    onClick={() => {
-                      setPaymentSearchTerm('');
-                      setPaymentStatusFilter('ALL');
-                    }}
-                    className="px-3.5 py-2 rounded-xl bg-[#FFF0D9] hover:bg-[#FFE6C2] text-[#6D28D9] border border-[#E8E2D9] text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap shadow-2xs hover:shadow-xs"
-                    title="Clear all search text and reset status filter to All"
+                    onClick={handleClearAllPaymentsByStatus}
+                    disabled={
+                      isClearingPayments ||
+                      (paymentStatusFilter === 'PENDING' && pendingPaymentsCount === 0) ||
+                      (paymentStatusFilter === 'PAID' && paidPaymentsCount === 0) ||
+                      (paymentStatusFilter === 'REJECTED' && rejectedPaymentsCount === 0) ||
+                      (paymentStatusFilter === 'ALL' && allPayments.length === 0)
+                    }
+                    className="px-3.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-[#B91C1C] border border-rose-200 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap shadow-2xs hover:shadow-xs disabled:opacity-40 disabled:cursor-not-allowed"
+                    title={`Clear ${
+                      paymentStatusFilter === 'PENDING'
+                        ? 'all pending payments in queue'
+                        : paymentStatusFilter === 'ALL'
+                        ? 'all payment records'
+                        : 'all ' + paymentStatusFilter.toLowerCase() + ' payments'
+                    }`}
                   >
-                    <RotateCcw className="w-3.5 h-3.5 text-[#E99A20]" />
-                    <span>Clear All</span>
+                    <Trash2 className="w-3.5 h-3.5 text-[#B91C1C]" />
+                    <span>
+                      {isClearingPayments
+                        ? 'Clearing...'
+                        : paymentStatusFilter === 'PENDING'
+                        ? `Clear Pending (${pendingPaymentsCount})`
+                        : paymentStatusFilter === 'PAID'
+                        ? `Clear Paid (${paidPaymentsCount})`
+                        : paymentStatusFilter === 'REJECTED'
+                        ? `Clear Rejected (${rejectedPaymentsCount})`
+                        : `Clear All (${allPayments.length})`}
+                    </span>
                   </button>
                 </div>
               </div>
@@ -2099,6 +2177,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 Re-verify
                               </button>
                             )}
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleDeleteSinglePayment(
+                                  pay.id,
+                                  pay.transaction_reference || pay.registration?.full_name || pay.id
+                                )
+                              }
+                              className="p-1.5 rounded-lg bg-white hover:bg-rose-50 text-[#6B655D] hover:text-[#B91C1C] border border-[#E8E2D9] hover:border-rose-200 transition-colors cursor-pointer inline-flex items-center align-middle"
+                              title="Delete / Clear this payment record"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
                           </td>
                         </tr>
                       ))}
