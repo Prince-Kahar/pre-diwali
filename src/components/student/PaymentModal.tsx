@@ -19,6 +19,7 @@ import { EventSettings, Registration, PaymentRecord } from '../../types';
 import { formatINR } from '../../lib/crypto';
 import { dataService } from '../../services/dataService';
 import collegeLogo from '../../assets/logo.png';
+import paymentQrImage from '../../assets/payment-qr.png';
 
 interface PaymentModalProps {
   event: EventSettings;
@@ -48,17 +49,16 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
       ? (event.registration_fee_minor_units || 30000)
       : registration.expected_amount_minor_units;
   const amountRupees = (feeMinor / 100).toFixed(2);
-  const cleanUpiId = (event.payment_upi_id || 'madhavikalathiya2007@sbi').trim();
+  const cleanUpiId = (event.payment_upi_id || 'madhavikalathiya19@oksbi').trim();
   const cleanUpiName = (event.payment_upi_name || 'Madhavi Kalathiya').trim();
-  // Standard NPCI UPI URI specification: pa MUST contain raw '@' without '%40', pn URL-encoded (%20 for space)
-  // Short alphanumeric note 'PreDiwali' prevents bank gateway rejection or parsing hangs
-  const upiIntent = `upi://pay?pa=${cleanUpiId}&pn=${encodeURIComponent(cleanUpiName)}&am=${amountRupees}&cu=${registration.currency || 'INR'}&tn=PreDiwali`;
+  // Standard NPCI UPI URI specification with Google Pay aid parameter for universal recognition
+  const upiQuery = `pa=${cleanUpiId}&pn=${encodeURIComponent(cleanUpiName)}&aid=uGICAgOCKiNP4GQ&am=${amountRupees}&cu=${registration.currency || 'INR'}&tn=PreDiwali`;
+  const upiIntent = `upi://pay?${upiQuery}`;
 
   const downloadQrCode = () => {
-    if (!upiQrDataUrl) return;
     const a = document.createElement('a');
-    a.href = upiQrDataUrl;
-    a.download = `PreDiwali_Payment_QR.png`;
+    a.href = paymentQrImage || upiQrDataUrl;
+    a.download = `PreDiwali_GPay_QR_madhavikalathiya19.png`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -111,7 +111,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   }, [registration.id, onPaymentSuccess]);
 
   const copyUpiId = () => {
-    navigator.clipboard.writeText(event.payment_upi_id);
+    navigator.clipboard.writeText(cleanUpiId);
     setCopiedUpi(true);
     setTimeout(() => setCopiedUpi(false), 2500);
   };
@@ -123,10 +123,10 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
     if (isAndroid) {
       if (targetApp === 'bhim') {
         // Direct launch into BHIM app via official NPCI package
-        targetUrl = `intent://pay?pa=${cleanUpiId}&pn=${encodeURIComponent(cleanUpiName)}&am=${amountRupees}&cu=INR&tn=PreDiwali#Intent;scheme=upi;package=in.org.npci.upiapp;end;`;
+        targetUrl = `intent://pay?${upiQuery}#Intent;scheme=upi;package=in.org.npci.upiapp;end;`;
       } else {
         // Standard Android Intent syntax recognized by Chrome to open system UPI chooser
-        targetUrl = `intent://pay?pa=${cleanUpiId}&pn=${encodeURIComponent(cleanUpiName)}&am=${amountRupees}&cu=INR&tn=PreDiwali#Intent;scheme=upi;end;`;
+        targetUrl = `intent://pay?${upiQuery}#Intent;scheme=upi;end;`;
       }
     }
 
@@ -292,13 +292,12 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
                 {/* Left Column: QR Code & Pay Now Button (lg:col-span-6) */}
                 <div className="lg:col-span-6 flex flex-col items-center justify-center space-y-4 p-4 sm:p-5 rounded-2xl bg-[#FFFCF5] border border-[#E8E2D9]">
-                  {upiQrDataUrl ? (
                     <div className="flex flex-col items-center gap-2.5 w-full">
-                      <div className="p-3 bg-white rounded-2xl border border-[#E8E2D9] shadow-xs">
+                      <div className="p-2 sm:p-2.5 bg-white rounded-2xl border border-[#E8E2D9] shadow-xs max-w-[220px] sm:max-w-[250px]">
                         <img
-                          src={upiQrDataUrl}
-                          alt="Pre-Diwali UPI Payment QR"
-                          className="w-48 h-48 sm:w-52 sm:h-52 rounded-lg"
+                          src={paymentQrImage}
+                          alt="GPay UPI QR - madhavikalathiya19@oksbi"
+                          className="w-full h-auto rounded-xl object-contain shadow-2xs"
                         />
                       </div>
                       <button
@@ -310,11 +309,6 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                         <span>Download QR (Scan from Gallery)</span>
                       </button>
                     </div>
-                  ) : (
-                    <div className="w-48 h-48 bg-[#FFF0D9] rounded-2xl flex items-center justify-center">
-                      <Loader2 className="w-8 h-8 animate-spin text-[#E99A20]" />
-                    </div>
-                  )}
 
                   <div className="text-center space-y-1 w-full">
                     <p className="text-xs text-[#29243A] font-bold">

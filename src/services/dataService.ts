@@ -80,7 +80,7 @@ const DEFAULT_EVENT: EventSettings = {
   registration_enabled: true,
   entry_enabled: true,
   payment_mode: 'STATIC_UPI', // Static UPI only
-  payment_upi_id: 'madhavikalathiya2007@sbi',
+  payment_upi_id: 'madhavikalathiya19@oksbi',
   payment_upi_name: 'Madhavi Kalathiya',
   student_instructions: '1. Carry your physical college ID card alongside this QR Pass.\n2. QR pass is strictly one-time entry only. Once scanned at gate, it cannot be reused.\n3. Food coupon will be distributed at designated food counters based on registered preference (Regular / Jain).\n4. Traditional festive attire is strongly encouraged.',
   contact_email: 'prince.kahar.king@gmail.com',
@@ -160,7 +160,7 @@ class PreDiwaliDataStore {
       this.event.event_date = '2026-11-04T17:00:00+05:30';
       this.event.contact_email = 'prince.kahar.king@gmail.com';
       this.event.contact_phone = '7285056019';
-      this.event.payment_upi_id = 'madhavikalathiya2007@sbi';
+      this.event.payment_upi_id = 'madhavikalathiya19@oksbi';
       this.event.payment_upi_name = 'Madhavi Kalathiya';
       this.event.payment_mode = 'STATIC_UPI';
       this.event.registration_fee_minor_units = 30000;
