@@ -364,13 +364,13 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                     {/* Clear Payment Guidance */}
                     <div className="bg-amber-50/90 border border-amber-300 rounded-xl p-2.5 text-left text-xs space-y-1 mt-2 shadow-2xs">
                       <p className="font-bold text-amber-900 flex items-center gap-1">
-                        <span>ℹ️ Payment Step Note:</span>
+                        <span>ℹ️ Payment Instructions:</span>
                       </p>
                       <p className="text-amber-800 text-[11px] leading-relaxed">
-                        • <strong>Google Pay:</strong> Niche diye <strong>"Next"</strong> button par tap karein, fir Bank select karke <strong>"Pay ₹{amountRupees}"</strong> aayega.
+                        • <strong>Google Pay:</strong> Tap the <strong>"Next"</strong> button at the bottom of the screen to choose your bank account and complete <strong>"Pay ₹{amountRupees}"</strong>.
                       </p>
                       <p className="text-amber-800 text-[11px] leading-relaxed">
-                        • <strong>PhonePe / Paytm:</strong> Direct 1-tap me <strong>"Proceed to Pay"</strong> open ho jayega.
+                        • <strong>PhonePe / Paytm:</strong> Opens directly with the 1-tap <strong>"Proceed to Pay"</strong> screen.
                       </p>
                     </div>
                   </div>
