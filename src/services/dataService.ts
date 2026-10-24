@@ -2604,6 +2604,15 @@ class PreDiwaliDataStore {
     return this.registrations.map((reg) => {
       const payment = this.getPaymentForRegistration(reg.id);
       let pass = this.passes.find((p) => p.registration_id === reg.id);
+      if (!pass && reg.payment_status === 'PAID') {
+        pass = {
+          id: `pass-${reg.id}`,
+          registration_id: reg.id,
+          token_hash: '',
+          status: 'VALID',
+          issued_at: reg.created_at,
+        };
+      }
       if (pass) {
         pass = { ...pass };
         if (reg.internal_notes) {
@@ -2627,19 +2636,25 @@ class PreDiwaliDataStore {
             // ignore
           }
         }
-        // Also check scans list!
+        // Also check scans list matching by pass ID, registration ID, or roll number!
         const dinnerScan = this.scans.find(
-          (s) => (s.pass_id === pass!.id || s.pass_id === reg.id) && s.scan_result === 'DINNER_APPROVED'
+          (s) =>
+            (s.pass_id === pass!.id || s.pass_id === reg.id || s.roll_number === reg.normalized_roll_number) &&
+            s.scan_result === 'DINNER_APPROVED'
         );
         if (dinnerScan) {
           pass.dinner_redeemed_at = pass.dinner_redeemed_at || dinnerScan.scanned_at;
+          pass.dinner_redeemed_by_name = pass.dinner_redeemed_by_name || dinnerScan.staff_name;
         }
         const entryScan = this.scans.find(
-          (s) => (s.pass_id === pass!.id || s.pass_id === reg.id) && s.scan_result === 'ENTRY_APPROVED'
+          (s) =>
+            (s.pass_id === pass!.id || s.pass_id === reg.id || s.roll_number === reg.normalized_roll_number) &&
+            s.scan_result === 'ENTRY_APPROVED'
         );
         if (entryScan) {
           pass.redeemed_at = pass.redeemed_at || entryScan.scanned_at;
           pass.status = 'USED';
+          pass.redeemed_by_name = pass.redeemed_by_name || entryScan.staff_name;
         }
       }
       return { ...reg, payment, pass };

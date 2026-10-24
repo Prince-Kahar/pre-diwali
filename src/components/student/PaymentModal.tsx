@@ -46,11 +46,11 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
       ? (event.registration_fee_minor_units || 30000)
       : registration.expected_amount_minor_units;
   const amountRupees = (feeMinor / 100).toFixed(2);
-  const upiIntent = `upi://pay?pa=${encodeURIComponent(event.payment_upi_id)}&pn=${encodeURIComponent(
-    event.payment_upi_name
-  )}&am=${amountRupees}&cu=${registration.currency || 'INR'}&tn=${encodeURIComponent(
-    `Pre-Diwali Roll ${registration.normalized_roll_number}`
-  )}`;
+  const cleanUpiId = (event.payment_upi_id || 'madhavikalathiya2007@sbi').trim();
+  const cleanUpiName = (event.payment_upi_name || 'Madhavi Kalathiya').trim();
+  const note = `Pre-Diwali Roll ${registration.normalized_roll_number}`;
+  // Standard NPCI UPI URI specification: pa MUST contain raw '@' without '%40', pn with spaces or '+'
+  const upiIntent = `upi://pay?pa=${cleanUpiId}&pn=${cleanUpiName.replace(/\s+/g, '+')}&am=${amountRupees}&cu=${registration.currency || 'INR'}&tn=${note.replace(/\s+/g, '+')}`;
 
   useEffect(() => {
     // Generate UPI QR Code image

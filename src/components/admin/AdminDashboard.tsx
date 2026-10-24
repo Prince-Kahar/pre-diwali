@@ -1687,7 +1687,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
               {/* ----------------- DESKTOP / TABLET RESPONSIVE TABLE (hidden md:block) ----------------- */}
               <div className="hidden md:block overflow-x-auto w-full max-w-full rounded-xl sm:rounded-2xl border border-[#E8E2D9] shadow-2xs scrollbar-thin scrollbar-thumb-amber-300 scrollbar-track-[#FFF0D9]/30">
-                <table className="w-full min-w-[820px] lg:min-w-0 text-left text-xs text-[#29243A] border-collapse">
+                <table className="w-full min-w-[1100px] text-left text-xs text-[#29243A] border-collapse">
                   <thead className="bg-[#FFF0D9] text-[#29243A] font-bold border-b border-[#E8E2D9]">
                     <tr>
                       <th
@@ -1722,7 +1722,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               <ArrowDown className="w-3.5 h-3.5 text-[#6D28D9]" />
                             )
                           ) : (
-                            <ArrowUpDown className="w-3 h-3 text-[#6B655D]/40" />
+                            <ArrowUpDown className="w-3.5 h-3.5 text-[#6B655D]/40" />
                           )}
                         </div>
                       </th>
@@ -1731,7 +1731,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <th className="px-3 py-3 whitespace-nowrap">Gate Entry QR</th>
                       <th className="px-3 py-3 whitespace-nowrap">Dinner QR Scan</th>
                       <th className="px-3 py-3 whitespace-nowrap">Payment</th>
-                      <th className="px-3 py-3 text-right whitespace-nowrap sticky right-0 bg-[#FFF0D9] z-10 shadow-[-4px_0_6px_rgba(0,0,0,0.03)]">
+                      <th className="px-3 py-3 text-right whitespace-nowrap sticky right-0 bg-[#FFF0D9] z-10 min-w-[300px] shadow-[-4px_0_6px_rgba(0,0,0,0.03)]">
                         Actions
                       </th>
                     </tr>
@@ -1817,55 +1817,128 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             </div>
                           </td>
 
-                          {/* 1. Gate Entry QR Checkpoint */}
+                          {/* 1. Gate Entry QR Checkpoint - Real-time Live Update */}
                           <td className="px-3 py-2.5 sm:py-3 whitespace-nowrap">
-                            {reg.pass ? (
-                              reg.pass.redeemed_at || reg.pass.status === 'USED' ? (
-                                <div className="space-y-0.5">
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-[#15803D] border border-emerald-200 font-bold text-[10px]">
-                                    <CheckCircle2 className="w-3 h-3 text-[#15803D]" /> Gate Done
-                                  </span>
-                                  <div className="text-[10px] text-[#6B655D]">
-                                    {reg.pass.redeemed_at ? formatKolkataDateTime(reg.pass.redeemed_at) : 'Admitted'}
+                            {(() => {
+                              const gateScan = scansList.find(
+                                (s) =>
+                                  (s.pass_id === reg.pass?.id ||
+                                    s.pass_id === reg.id ||
+                                    s.roll_number === reg.normalized_roll_number) &&
+                                  s.scan_result === 'ENTRY_APPROVED'
+                              );
+
+                              let notesGateAt: string | undefined = undefined;
+                              if (reg.internal_notes) {
+                                try {
+                                  if (typeof reg.internal_notes === 'string' && reg.internal_notes.startsWith('{')) {
+                                    const parsed = JSON.parse(reg.internal_notes);
+                                    if (parsed.gate_entry_redeemed_at) notesGateAt = parsed.gate_entry_redeemed_at;
+                                  }
+                                } catch {
+                                  // ignore
+                                }
+                              }
+
+                              const isGateDone = Boolean(reg.pass?.redeemed_at || reg.pass?.status === 'USED' || gateScan || notesGateAt);
+                              const gateTime = reg.pass?.redeemed_at || gateScan?.scanned_at || notesGateAt;
+
+                              if (isGateDone) {
+                                return (
+                                  <div className="space-y-0.5">
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-[#15803D] border border-emerald-200 font-bold text-[10px]">
+                                      <CheckCircle2 className="w-3 h-3 text-[#15803D]" /> Gate Done
+                                    </span>
+                                    <div className="text-[10px] text-[#6B655D]">
+                                      {gateTime ? formatKolkataDateTime(gateTime) : 'Admitted'}
+                                    </div>
                                   </div>
-                                </div>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-[#6B655D] border border-slate-200 font-medium text-[10px]">
-                                  ○ Not Scanned
-                                </span>
-                              )
-                            ) : (
-                              <span className="text-[#6B655D] text-[10px]">No Pass</span>
-                            )}
+                                );
+                              }
+
+                              if (reg.pass || reg.payment_status === 'PAID') {
+                                return (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-[#6B655D] border border-slate-200 font-medium text-[10px]">
+                                    ○ Not Scanned
+                                  </span>
+                                );
+                              }
+
+                              return <span className="text-[#6B655D] text-[10px]">No Pass</span>;
+                            })()}
                           </td>
 
-                          {/* 2. Dinner QR Scan Checkpoint */}
+                          {/* 2. Dinner QR Scan Checkpoint - Real-time Live Update */}
                           <td className="px-3 py-2.5 sm:py-3 whitespace-nowrap">
-                            {reg.pass ? (
-                              reg.pass.dinner_redeemed_at ? (
-                                <div className="space-y-0.5">
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 text-[#B45309] border border-amber-200 font-bold text-[10px]">
-                                    <Utensils className="w-3 h-3 text-[#E99A20]" /> Dinner Done
-                                  </span>
-                                  <div className="text-[10px] text-[#6B655D]">
-                                    {formatKolkataDateTime(reg.pass.dinner_redeemed_at)}
+                            {(() => {
+                              const gateScan = scansList.find(
+                                (s) =>
+                                  (s.pass_id === reg.pass?.id ||
+                                    s.pass_id === reg.id ||
+                                    s.roll_number === reg.normalized_roll_number) &&
+                                  s.scan_result === 'ENTRY_APPROVED'
+                              );
+
+                              const dinnerScan = scansList.find(
+                                (s) =>
+                                  (s.pass_id === reg.pass?.id ||
+                                    s.pass_id === reg.id ||
+                                    s.roll_number === reg.normalized_roll_number) &&
+                                  s.scan_result === 'DINNER_APPROVED'
+                              );
+
+                              let notesGateAt: string | undefined = undefined;
+                              let notesDinnerAt: string | undefined = undefined;
+                              if (reg.internal_notes) {
+                                try {
+                                  if (typeof reg.internal_notes === 'string' && reg.internal_notes.startsWith('{')) {
+                                    const parsed = JSON.parse(reg.internal_notes);
+                                    if (parsed.gate_entry_redeemed_at) notesGateAt = parsed.gate_entry_redeemed_at;
+                                    if (parsed.dinner_redeemed_at) notesDinnerAt = parsed.dinner_redeemed_at;
+                                  }
+                                } catch {
+                                  // ignore
+                                }
+                              }
+
+                              const isGateDone = Boolean(reg.pass?.redeemed_at || reg.pass?.status === 'USED' || gateScan || notesGateAt);
+                              const isDinnerDone = Boolean(reg.pass?.dinner_redeemed_at || dinnerScan || notesDinnerAt);
+                              const dinnerTime = reg.pass?.dinner_redeemed_at || dinnerScan?.scanned_at || notesDinnerAt;
+
+                              if (isDinnerDone) {
+                                return (
+                                  <div className="space-y-0.5">
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 text-[#B45309] border border-amber-200 font-bold text-[10px]">
+                                      <Utensils className="w-3 h-3 text-[#E99A20]" /> Dinner Done
+                                    </span>
+                                    <div className="text-[10px] text-[#6B655D]">
+                                      {dinnerTime ? formatKolkataDateTime(dinnerTime) : 'Claimed'}
+                                    </div>
                                   </div>
-                                </div>
-                              ) : reg.pass.redeemed_at || reg.pass.status === 'USED' ? (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-50 text-[#6D28D9] border border-purple-200 font-bold text-[10px]">
-                                  Ready for Dinner
-                                </span>
-                              ) : (
-                                <span
-                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-50 text-[#B91C1C] border border-rose-200 font-medium text-[10px]"
-                                  title="Gate Entry QR must be scanned first"
-                                >
-                                  🔒 Gate Required
-                                </span>
-                              )
-                            ) : (
-                              <span className="text-[#6B655D] text-[10px]">No Pass</span>
-                            )}
+                                );
+                              }
+
+                              if (isGateDone) {
+                                return (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-50 text-[#6D28D9] border border-purple-200 font-bold text-[10px]">
+                                    Ready for Dinner
+                                  </span>
+                                );
+                              }
+
+                              if (reg.pass || reg.payment_status === 'PAID') {
+                                return (
+                                  <span
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-50 text-[#B91C1C] border border-rose-200 font-medium text-[10px]"
+                                    title="Gate Entry QR must be scanned first"
+                                  >
+                                    🔒 Gate Required
+                                  </span>
+                                );
+                              }
+
+                              return <span className="text-[#6B655D] text-[10px]">No Pass</span>;
+                            })()}
                           </td>
 
                           {/* Payment Status */}
@@ -1883,9 +1956,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             </span>
                           </td>
 
-                          {/* Actions Column (Sticky on right so never cut off) */}
-                          <td className="px-3 py-2.5 sm:py-3 text-right whitespace-nowrap sticky right-0 bg-white group-hover:bg-[#FFFDF7] z-10 shadow-[-4px_0_6px_rgba(0,0,0,0.03)]">
-                            <div className="flex items-center justify-end gap-1">
+                          {/* Actions Column (Sticky on right with guaranteed width so Delete is never cut off) */}
+                          <td className="px-3 py-2.5 sm:py-3 text-right whitespace-nowrap sticky right-0 bg-white group-hover:bg-[#FFFDF7] z-10 min-w-[300px] shadow-[-4px_0_6px_rgba(0,0,0,0.03)]">
+                            <div className="flex items-center justify-end gap-1.5 flex-nowrap">
                               <button
                                 type="button"
                                 onClick={() => setSelectedReg(reg)}
@@ -1905,59 +1978,97 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 <span>Edit</span>
                               </button>
 
-                              {reg.pass?.status === 'USED' && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleReactivatePass(reg.pass!.id, reg.full_name)}
-                                  className="px-2 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-[#15803D] border border-emerald-200 text-[10px] font-bold inline-flex items-center gap-0.5 cursor-pointer transition-colors shadow-2xs"
-                                  title="Allow student to re-enter using their existing QR code"
-                                >
-                                  <RotateCcw className="w-2.5 h-2.5" />
-                                  <span>Re-use QR</span>
-                                </button>
-                              )}
+                              {(() => {
+                                const gateScan = scansList.find(
+                                  (s) =>
+                                    (s.pass_id === reg.pass?.id ||
+                                      s.pass_id === reg.id ||
+                                      s.roll_number === reg.normalized_roll_number) &&
+                                    s.scan_result === 'ENTRY_APPROVED'
+                                );
+                                const dinnerScan = scansList.find(
+                                  (s) =>
+                                    (s.pass_id === reg.pass?.id ||
+                                      s.pass_id === reg.id ||
+                                      s.roll_number === reg.normalized_roll_number) &&
+                                    s.scan_result === 'DINNER_APPROVED'
+                                );
 
-                              {reg.pass?.status === 'VALID' && !reg.pass?.redeemed_at && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleMarkGateDone(reg.pass!.id, reg.full_name)}
-                                  className="px-2 py-1 rounded-lg bg-purple-50 hover:bg-purple-100 text-[#6D28D9] border border-purple-200 text-[10px] font-bold inline-flex items-center gap-0.5 cursor-pointer transition-colors shadow-2xs"
-                                  title="Manually mark Gate Entry QR as Done"
-                                >
-                                  <CheckCircle2 className="w-2.5 h-2.5" />
-                                  <span>Mark Gate</span>
-                                </button>
-                              )}
+                                let notesGate = false;
+                                let notesDinner = false;
+                                if (reg.internal_notes) {
+                                  try {
+                                    if (typeof reg.internal_notes === 'string' && reg.internal_notes.startsWith('{')) {
+                                      const p = JSON.parse(reg.internal_notes);
+                                      if (p.gate_entry_redeemed_at) notesGate = true;
+                                      if (p.dinner_redeemed_at) notesDinner = true;
+                                    }
+                                  } catch {
+                                    // ignore
+                                  }
+                                }
 
-                              {reg.pass && (reg.pass.redeemed_at || reg.pass.status === 'USED') && !reg.pass.dinner_redeemed_at && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleMarkDinnerDone(reg.pass!.id, reg.full_name)}
-                                  className="px-2 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-[#B45309] border border-amber-200 text-[10px] font-bold inline-flex items-center gap-0.5 cursor-pointer transition-colors shadow-2xs"
-                                  title="Manually mark Dinner QR Scan as Done"
-                                >
-                                  <Utensils className="w-2.5 h-2.5 text-[#E99A20]" />
-                                  <span>Mark Dinner</span>
-                                </button>
-                              )}
+                                const isGateDone = Boolean(reg.pass?.redeemed_at || reg.pass?.status === 'USED' || gateScan || notesGate);
+                                const isDinnerDone = Boolean(reg.pass?.dinner_redeemed_at || dinnerScan || notesDinner);
+                                const passId = reg.pass?.id || reg.id;
 
-                              {reg.pass?.dinner_redeemed_at && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleResetDinnerScan(reg.pass!.id, reg.full_name)}
-                                  className="px-2 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-[#B45309] border border-amber-200 text-[10px] font-bold inline-flex items-center gap-0.5 cursor-pointer transition-colors shadow-2xs"
-                                  title="Reset dinner coupon so student can claim meal"
-                                >
-                                  <RotateCcw className="w-2.5 h-2.5" />
-                                  <span>Reset Dinner</span>
-                                </button>
-                              )}
+                                return (
+                                  <>
+                                    {isGateDone ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleReactivatePass(passId, reg.full_name)}
+                                        className="px-2 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-[#15803D] border border-emerald-200 text-[10px] font-bold inline-flex items-center gap-0.5 cursor-pointer transition-colors shadow-2xs"
+                                        title="Allow student to re-enter using their existing QR code"
+                                      >
+                                        <RotateCcw className="w-2.5 h-2.5" />
+                                        <span>Re-use QR</span>
+                                      </button>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleMarkGateDone(passId, reg.full_name)}
+                                        className="px-2 py-1 rounded-lg bg-purple-50 hover:bg-purple-100 text-[#6D28D9] border border-purple-200 text-[10px] font-bold inline-flex items-center gap-0.5 cursor-pointer transition-colors shadow-2xs"
+                                        title="Manually mark Gate Entry QR as Done"
+                                      >
+                                        <CheckCircle2 className="w-2.5 h-2.5" />
+                                        <span>Mark Gate</span>
+                                      </button>
+                                    )}
 
+                                    {isGateDone && !isDinnerDone && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleMarkDinnerDone(passId, reg.full_name)}
+                                        className="px-2 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-[#B45309] border border-amber-200 text-[10px] font-bold inline-flex items-center gap-0.5 cursor-pointer transition-colors shadow-2xs"
+                                        title="Manually mark Dinner QR Scan as Done"
+                                      >
+                                        <Utensils className="w-2.5 h-2.5 text-[#E99A20]" />
+                                        <span>Mark Dinner</span>
+                                      </button>
+                                    )}
+
+                                    {isDinnerDone && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleResetDinnerScan(passId, reg.full_name)}
+                                        className="px-2 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-[#B45309] border border-amber-200 text-[10px] font-bold inline-flex items-center gap-0.5 cursor-pointer transition-colors shadow-2xs"
+                                        title="Reset dinner coupon so student can claim meal"
+                                      >
+                                        <RotateCcw className="w-2.5 h-2.5" />
+                                        <span>Reset Dinner</span>
+                                      </button>
+                                    )}
+                                  </>
+                                );
+                              })()}
+
+                              {/* PROMINENT ALWAYS-VISIBLE DELETE BUTTON */}
                               <button
                                 type="button"
                                 onClick={() => handleDeleteRegistration(reg.id, reg.full_name)}
-                                className="px-2 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-[#B91C1C] border border-rose-200 text-[10px] font-bold inline-flex items-center gap-0.5 cursor-pointer transition-colors shadow-2xs"
-                                title="Delete student registration from database and dashboard"
+                                className="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-[#B91C1C] border border-rose-200 text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer transition-colors shadow-2xs hover:border-rose-300 shrink-0"
+                                title={`Delete registration for ${reg.full_name}`}
                               >
                                 <Trash2 className="w-2.5 h-2.5" />
                                 <span>Delete</span>
