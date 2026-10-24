@@ -1309,6 +1309,75 @@ class PreDiwaliDataStore {
     return { ...pass, raw_token };
   }
 
+  // Instant 1-second real-time sync for single student's pass & registration status
+  public async syncSinglePass(
+    registrationId: string
+  ): Promise<{ pass?: EntryPass & { raw_token?: string }; registration?: Registration }> {
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { data: dbReg } = await supabase
+          .from('registrations')
+          .select('*')
+          .eq('id', registrationId)
+          .maybeSingle();
+
+        if (dbReg) {
+          const idx = this.registrations.findIndex((r) => r.id === registrationId);
+          if (idx !== -1) {
+            this.registrations[idx] = { ...this.registrations[idx], ...dbReg };
+          } else {
+            this.registrations.push(dbReg as Registration);
+          }
+        }
+
+        const { data: dbPass } = await supabase
+          .from('entry_passes')
+          .select('*')
+          .eq('registration_id', registrationId)
+          .maybeSingle();
+
+        if (dbPass) {
+          const idx = this.passes.findIndex((p) => p.registration_id === registrationId);
+          if (idx !== -1) {
+            this.passes[idx] = { ...this.passes[idx], ...dbPass };
+          } else {
+            this.passes.push(dbPass as EntryPass);
+          }
+        }
+
+        const targetPass = this.passes.find((p) => p.registration_id === registrationId);
+        if (targetPass && dbReg?.internal_notes) {
+          try {
+            const notes =
+              typeof dbReg.internal_notes === 'string'
+                ? JSON.parse(dbReg.internal_notes)
+                : dbReg.internal_notes;
+            if (notes.gate_entry_redeemed_at) {
+              targetPass.redeemed_at = notes.gate_entry_redeemed_at;
+              targetPass.status = 'USED';
+              targetPass.redeemed_by_name = notes.gate_entry_redeemed_by;
+            }
+            if (notes.dinner_redeemed_at) {
+              targetPass.dinner_redeemed_at = notes.dinner_redeemed_at;
+              targetPass.dinner_redeemed_by_name = notes.dinner_redeemed_by;
+            }
+          } catch {
+            // ignore
+          }
+        }
+
+        this.persist();
+      } catch (err) {
+        console.warn('syncSinglePass error:', err);
+      }
+    }
+
+    return {
+      pass: this.getEntryPassByRegistration(registrationId),
+      registration: this.getRegistrationById(registrationId),
+    };
+  }
+
   public async revokePassAdmin(passId: string, adminId: string, reason: string): Promise<EntryPass> {
     const pass = this.passes.find((p) => p.id === passId);
     if (!pass) throw new Error('Pass not found');
@@ -1510,12 +1579,13 @@ class PreDiwaliDataStore {
           .eq('id', passId);
 
         await supabase.from('entry_scans').insert({
+          id: generateUUID(),
           event_id: this.event.id,
-          pass_id: passId,
-          staff_user_id: adminId,
-          gate_identifier: 'MAIN_GATE',
+          pass_id: isValidUUID(passId) ? passId : null,
+          staff_user_id: isValidUUID(adminId) ? adminId : null,
           scan_result: 'ENTRY_APPROVED',
-          created_at: now,
+          scanned_at: now,
+          reason_code: 'MAIN_GATE',
         });
       } catch (err) {
         console.warn('Supabase markGateEntryDoneAdmin sync notice:', err);
@@ -1560,12 +1630,13 @@ class PreDiwaliDataStore {
           .eq('id', passId);
 
         await supabase.from('entry_scans').insert({
+          id: generateUUID(),
           event_id: this.event.id,
-          pass_id: passId,
-          staff_user_id: adminId,
-          gate_identifier: 'DINNER_COUNTER',
-          scan_result: 'DINNER_APPROVED',
-          created_at: now,
+          pass_id: isValidUUID(passId) ? passId : null,
+          staff_user_id: isValidUUID(adminId) ? adminId : null,
+          scan_result: 'ENTRY_APPROVED',
+          scanned_at: now,
+          reason_code: 'DINNER_COUNTER',
         });
 
         const matchingReg = this.registrations.find((r) => r.id === pass.registration_id);
@@ -1760,56 +1831,100 @@ class PreDiwaliDataStore {
         };
       }
 
-      // Remote cross-check: sync latest redemption status across devices from Supabase
+      // Remote cross-check: sync latest redemption status across devices in real time from Supabase
       if (isSupabaseConfigured && supabase) {
         try {
-          if (!pass.redeemed_at) {
-            const { data: remotePass } = await supabase
-              .from('entry_passes')
-              .select('redeemed_at, redeemed_by, status')
-              .eq('id', pass.id)
-              .maybeSingle();
-            if (remotePass?.redeemed_at) {
+          // 1. Fetch latest pass status from cloud
+          let passQuery = supabase.from('entry_passes').select('*');
+          if (isValidUUID(pass.id)) {
+            passQuery = passQuery.or(`id.eq.${pass.id},token_hash.eq.${computedHash}`);
+          } else {
+            passQuery = passQuery.eq('token_hash', computedHash);
+          }
+          const { data: remotePass } = await passQuery.maybeSingle();
+          if (remotePass) {
+            if (remotePass.redeemed_at) {
               pass.redeemed_at = remotePass.redeemed_at;
               pass.status = 'USED';
-              if (remotePass.redeemed_by) pass.redeemed_by = remotePass.redeemed_by;
+            }
+            if (remotePass.redeemed_by) pass.redeemed_by = remotePass.redeemed_by;
+            if (remotePass.status === 'REVOKED' || remotePass.status === 'CANCELLED') {
+              pass.status = remotePass.status;
             }
           }
 
-          // Check remote entry_scans for gate entry AND dinner
-          const { data: dbScans } = await supabase
-            .from('entry_scans')
-            .select('gate_identifier, scan_result, created_at, staff_user_id')
-            .eq('pass_id', pass.id);
+          // 2. Fetch latest registration from cloud (authoritative internal_notes holding gate & dinner state)
+          const { data: remoteReg } = await supabase
+            .from('registrations')
+            .select('*')
+            .eq('id', pass.registration_id)
+            .maybeSingle();
 
+          if (remoteReg) {
+            reg.payment_status = remoteReg.payment_status;
+            reg.cancelled_at = remoteReg.cancelled_at;
+            reg.internal_notes = remoteReg.internal_notes;
+            if (remoteReg.food_preference) reg.food_preference = remoteReg.food_preference;
+            if (remoteReg.identity_photo_url) reg.identity_photo_url = remoteReg.identity_photo_url;
+
+            if (remoteReg.internal_notes) {
+              try {
+                const parsedNotes = typeof remoteReg.internal_notes === 'string'
+                  ? JSON.parse(remoteReg.internal_notes)
+                  : remoteReg.internal_notes;
+
+                if (parsedNotes.gate_entry_redeemed_at) {
+                  pass.redeemed_at = pass.redeemed_at || parsedNotes.gate_entry_redeemed_at;
+                  pass.status = 'USED';
+                  pass.redeemed_by_name = pass.redeemed_by_name || parsedNotes.gate_entry_redeemed_by;
+                }
+                if (parsedNotes.dinner_redeemed_at) {
+                  pass.dinner_redeemed_at = pass.dinner_redeemed_at || parsedNotes.dinner_redeemed_at;
+                  pass.dinner_redeemed_by_name = pass.dinner_redeemed_by_name || parsedNotes.dinner_redeemed_by;
+                }
+              } catch {
+                // ignore
+              }
+            }
+          }
+
+          // 3. Check remote entry_scans for gate entry AND dinner using valid schema columns
+          let scansQuery = supabase.from('entry_scans').select('*');
+          if (isValidUUID(pass.id) && isValidUUID(pass.registration_id)) {
+            scansQuery = scansQuery.or(`pass_id.eq.${pass.id},pass_id.eq.${pass.registration_id}`);
+          } else if (isValidUUID(pass.id)) {
+            scansQuery = scansQuery.eq('pass_id', pass.id);
+          }
+
+          const { data: dbScans } = await scansQuery;
           if (dbScans && dbScans.length > 0) {
             for (const s of dbScans) {
-              if (s.scan_result === 'ENTRY_APPROVED' || s.gate_identifier === 'MAIN_GATE') {
-                pass.redeemed_at = pass.redeemed_at || s.created_at;
+              const isDinner = s.reason_code === 'DINNER_APPROVED' || s.reason_code === 'DINNER_COUNTER' || s.scan_result === 'DINNER_APPROVED';
+              const scanTime = s.scanned_at || s.created_at || new Date().toISOString();
+
+              if (!this.scans.some((existing) => existing.id === s.id)) {
+                this.scans.unshift({
+                  id: s.id,
+                  event_id: s.event_id,
+                  pass_id: s.pass_id,
+                  staff_user_id: s.staff_user_id,
+                  staff_name: isDinner ? 'Dinner Volunteer' : 'Gate Volunteer',
+                  scan_result: isDinner ? 'DINNER_APPROVED' : s.scan_result,
+                  scanned_at: scanTime,
+                });
+              }
+
+              if (isDinner) {
+                pass.dinner_redeemed_at = pass.dinner_redeemed_at || scanTime;
+                pass.dinner_redeemed_by = pass.dinner_redeemed_by || s.staff_user_id;
+              } else if (s.scan_result === 'ENTRY_APPROVED') {
+                pass.redeemed_at = pass.redeemed_at || scanTime;
                 pass.status = 'USED';
               }
-              if (s.scan_result === 'DINNER_APPROVED' || s.gate_identifier === 'DINNER_COUNTER') {
-                pass.dinner_redeemed_at = pass.dinner_redeemed_at || s.created_at;
-                pass.dinner_redeemed_by = pass.dinner_redeemed_by || s.staff_user_id;
-              }
-            }
-          }
-
-          if (!pass.dinner_redeemed_at && reg.internal_notes) {
-            try {
-              if (typeof reg.internal_notes === 'string' && reg.internal_notes.startsWith('{')) {
-                const parsed = JSON.parse(reg.internal_notes);
-                if (parsed.dinner_redeemed_at) {
-                  pass.dinner_redeemed_at = parsed.dinner_redeemed_at;
-                  pass.dinner_redeemed_by = parsed.dinner_redeemed_by;
-                }
-              }
-            } catch {
-              // ignore
             }
           }
         } catch (e) {
-          console.warn('Remote redemption cross-check notice:', e);
+          console.warn('Remote redemption live cross-check notice:', e);
         }
       }
 
@@ -1957,9 +2072,10 @@ class PreDiwaliDataStore {
               event_id: this.event.id,
               pass_id: isValidUUID(pass.id) ? pass.id : null,
               staff_user_id: isValidUUID(staffUserId) ? staffUserId : null,
-              gate_identifier: 'MAIN_GATE',
               scan_result: 'ENTRY_APPROVED',
-              created_at: now,
+              scanned_at: now,
+              reason_code: 'MAIN_GATE',
+              request_id: requestId || `entry-${Date.now()}`,
             });
 
             // Mirror gate entry in registrations internal_notes for 100% persistent one-time guarantee across refreshes
@@ -2115,15 +2231,29 @@ class PreDiwaliDataStore {
           try {
             // Note: entry_passes DOES NOT have dinner_redeemed_at in Supabase schema.
             // We record dinner scans in entry_scans table and update registrations.internal_notes!
-            await supabase.from('entry_scans').insert({
-              id: generateUUID(),
-              event_id: this.event.id,
-              pass_id: isValidUUID(pass.id) ? pass.id : null,
-              staff_user_id: isValidUUID(staffUserId) ? staffUserId : null,
-              gate_identifier: 'DINNER_COUNTER',
-              scan_result: 'DINNER_APPROVED',
-              created_at: now,
-            });
+            try {
+              await supabase.from('entry_scans').insert({
+                id: generateUUID(),
+                event_id: this.event.id,
+                pass_id: isValidUUID(pass.id) ? pass.id : null,
+                staff_user_id: isValidUUID(staffUserId) ? staffUserId : null,
+                scan_result: 'DINNER_APPROVED',
+                scanned_at: now,
+                reason_code: 'DINNER_COUNTER',
+                request_id: requestId || `dinner-${Date.now()}`,
+              });
+            } catch {
+              await supabase.from('entry_scans').insert({
+                id: generateUUID(),
+                event_id: this.event.id,
+                pass_id: isValidUUID(pass.id) ? pass.id : null,
+                staff_user_id: isValidUUID(staffUserId) ? staffUserId : null,
+                scan_result: 'ENTRY_APPROVED',
+                scanned_at: now,
+                reason_code: 'DINNER_COUNTER',
+                request_id: requestId || `dinner-${Date.now()}`,
+              });
+            }
 
             // Update registration internal_notes with dinner redemption timestamp
             let currentNotes: Record<string, unknown> = {};
@@ -2486,14 +2616,15 @@ class PreDiwaliDataStore {
       if (scanRows) {
         for (const row of scanRows) {
           if (row.id.toLowerCase().includes('dummy') || row.id.startsWith('scan-seed-')) continue;
+          const isDinner = row.reason_code === 'DINNER_APPROVED' || row.reason_code === 'DINNER_COUNTER' || row.scan_result === 'DINNER_APPROVED';
           fetchedScans.push({
             id: row.id,
             event_id: row.event_id,
             pass_id: row.pass_id || undefined,
             staff_user_id: row.staff_user_id,
-            staff_name: row.gate_identifier === 'DINNER_COUNTER' ? 'Dinner Volunteer' : 'Gate Volunteer',
-            scan_result: row.scan_result,
-            scanned_at: row.created_at || new Date().toISOString(),
+            staff_name: isDinner ? 'Dinner Volunteer' : 'Gate Volunteer',
+            scan_result: isDinner ? 'DINNER_APPROVED' : row.scan_result,
+            scanned_at: row.scanned_at || row.created_at || new Date().toISOString(),
           });
         }
         this.scans = fetchedScans;

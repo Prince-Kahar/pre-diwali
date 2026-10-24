@@ -114,8 +114,16 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
       loadStaffScans();
     });
 
+    // Real-time continuous background sync (every 1.5s) to guarantee instant multi-device accuracy
+    const syncInterval = setInterval(() => {
+      dataService.initSupabase().then(() => {
+        loadStaffScans();
+      });
+    }, 1500);
+
     return () => {
       stopCamera();
+      clearInterval(syncInterval);
       if (unsubscribeRealtime) unsubscribeRealtime();
       window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
       window.removeEventListener('online', handleOnline);
@@ -194,18 +202,19 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
           cleanToken = tokenMatch[0];
         }
 
-        // INSTANT AUDIO BEEP on QR Detection!
-        sound.playScanBeep();
-
-        // Prevent accidental instant duplicate auto-scans for the same token
+        // Prevent accidental instant duplicate auto-scans for the same token in this scan mode
         const now = Date.now();
-        const lastTime = recentlyProcessedTokensRef.current.get(cleanToken);
-        if (lastTime && now - lastTime < 10000) {
+        const scanKey = `${scanType}_${cleanToken}`;
+        const lastTime = recentlyProcessedTokensRef.current.get(scanKey);
+        if (lastTime && now - lastTime < 2500) {
           return;
         }
 
+        // INSTANT AUDIO BEEP on verified QR Detection!
+        sound.playScanBeep();
+
         cooldownRef.current = true;
-        recentlyProcessedTokensRef.current.set(cleanToken, now);
+        recentlyProcessedTokensRef.current.set(scanKey, now);
 
         // Stop camera cleanly in background so it never scans twice
         await stopCamera();
@@ -362,6 +371,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
     sound.init();
     setScanResult(null);
     cooldownRef.current = false;
+    recentlyProcessedTokensRef.current.clear();
     await startCamera();
   };
 
@@ -371,6 +381,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
     setScanType(mode);
     setScanResult(null);
     cooldownRef.current = false;
+    recentlyProcessedTokensRef.current.clear();
     await startCamera();
   };
 

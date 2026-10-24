@@ -21,6 +21,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { EventSettings, Registration, EntryPass } from '../../types';
+import { dataService } from '../../services/dataService';
 import { DiyaIcon, RangoliMotif } from '../common/DiyaDecoration';
 import { formatINR, formatKolkataDateTime, maskContactNumber } from '../../lib/crypto';
 import collegeLogo from '../../assets/logo.png';
@@ -38,13 +39,44 @@ export const PassView: React.FC<PassViewProps> = ({
   pass,
   onBack,
 }) => {
+  const [livePass, setLivePass] = useState<EntryPass & { raw_token?: string }>(pass);
+  const [liveReg, setLiveReg] = useState<Registration>(registration);
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const passCardRef = useRef<HTMLDivElement>(null);
 
+  // 1.2-second instant real-time sync: as soon as volunteer scans QR at gate or food counter, pass updates immediately!
+  useEffect(() => {
+    let isMounted = true;
+    const pollPass = async () => {
+      try {
+        const res = await dataService.syncSinglePass(registration.id);
+        if (!isMounted) return;
+        if (res.pass) {
+          setLivePass((prev) => ({
+            ...res.pass!,
+            raw_token: pass.raw_token || prev.raw_token || res.pass!.raw_token,
+          }));
+        }
+        if (res.registration) {
+          setLiveReg(res.registration);
+        }
+      } catch (err) {
+        console.warn('PassView sync error:', err);
+      }
+    };
+
+    pollPass();
+    const interval = setInterval(pollPass, 1200);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [registration.id, pass.raw_token]);
+
   useEffect(() => {
     // Generate QR Code with high resolution
-    const tokenPayload = pass.raw_token || pass.token_hash;
+    const tokenPayload = livePass.raw_token || livePass.token_hash;
     QRCode.toDataURL(tokenPayload, {
       width: 320,
       margin: 1.5,
@@ -54,8 +86,8 @@ export const PassView: React.FC<PassViewProps> = ({
       },
     }).then(setQrDataUrl);
 
-    // Fire festive celebration confetti if pass is VALID
-    if (pass.status === 'VALID') {
+    // Fire festive celebration confetti if pass is VALID and not yet redeemed
+    if (livePass.status === 'VALID' && !livePass.redeemed_at) {
       try {
         confetti({
           particleCount: 70,
@@ -67,7 +99,7 @@ export const PassView: React.FC<PassViewProps> = ({
         // Safe fallback
       }
     }
-  }, [pass.raw_token, pass.token_hash, pass.status]);
+  }, [livePass.raw_token, livePass.token_hash, livePass.status, livePass.redeemed_at]);
 
   // Export Pass as PDF
   const handleDownloadPdf = async () => {
@@ -95,7 +127,7 @@ export const PassView: React.FC<PassViewProps> = ({
       const positionY = 15;
 
       pdf.addImage(imgData, 'PNG', 10, positionY, imgWidth, imgHeight);
-      pdf.save(`PreDiwali_EntryPass_${registration.normalized_roll_number}.pdf`);
+      pdf.save(`PreDiwali_EntryPass_${liveReg.normalized_roll_number}.pdf`);
     } catch (err) {
       console.error('PDF export failed:', err);
     } finally {
@@ -108,7 +140,7 @@ export const PassView: React.FC<PassViewProps> = ({
     if (!qrDataUrl) return;
     const a = document.createElement('a');
     a.href = qrDataUrl;
-    a.download = `PreDiwali_QR_${registration.normalized_roll_number}.png`;
+    a.download = `PreDiwali_QR_${liveReg.normalized_roll_number}.png`;
     a.click();
   };
 
@@ -116,6 +148,10 @@ export const PassView: React.FC<PassViewProps> = ({
   const handlePrint = () => {
     window.print();
   };
+
+  // Computed real-time checkpoint states
+  const isGateAdmitted = Boolean(livePass.redeemed_at) || livePass.status === 'USED';
+  const isDinnerClaimed = Boolean(livePass.dinner_redeemed_at);
 
   return (
     <div className="max-w-2xl mx-auto py-6 space-y-6">
@@ -130,8 +166,17 @@ export const PassView: React.FC<PassViewProps> = ({
           <span>Back to Home</span>
         </button>
 
-        {/* Action Buttons */}
+        {/* Action Buttons & Real-Time Pulse */}
         <div className="flex items-center gap-2">
+          {/* Live Real-time Indicator */}
+          <div className="hidden xs:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-[#15803D] text-[11px] font-bold">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+            <span>Live Sync</span>
+          </div>
+
           <button
             type="button"
             onClick={handleDownloadQrImage}
@@ -197,17 +242,25 @@ export const PassView: React.FC<PassViewProps> = ({
             <span className="text-[10px] uppercase tracking-wider text-[#6B655D] font-bold">
               Pass Status
             </span>
-            {pass.status === 'VALID' ? (
+            {isDinnerClaimed ? (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-[#15803D] border border-emerald-300 text-xs font-bold mt-1 shadow-xs">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> ALL CHECKPOINTS DONE
+              </span>
+            ) : isGateAdmitted ? (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-50 text-[#6D28D9] border border-purple-300 text-xs font-bold mt-1 shadow-xs animate-pulse">
+                <CheckCircle2 className="w-3.5 h-3.5 text-[#6D28D9]" /> GATE ADMITTED — READY FOR DINNER
+              </span>
+            ) : livePass.status === 'VALID' ? (
               <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-emerald-50 text-[#15803D] border border-emerald-200 text-xs font-bold mt-1">
                 <CheckCircle2 className="w-3.5 h-3.5" /> ENTRY PASS VALID
               </span>
-            ) : pass.status === 'USED' ? (
+            ) : livePass.status === 'USED' ? (
               <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-amber-50 text-[#B45309] border border-amber-200 text-xs font-bold mt-1">
                 ALREADY REDEEMED (USED)
               </span>
             ) : (
               <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-rose-50 text-[#B91C1C] border border-rose-200 text-xs font-bold mt-1">
-                <XCircle className="w-3.5 h-3.5" /> {pass.status}
+                <XCircle className="w-3.5 h-3.5" /> {livePass.status}
               </span>
             )}
           </div>
@@ -235,7 +288,7 @@ export const PassView: React.FC<PassViewProps> = ({
                 Strict 1-Time Entry
               </span>
               <span className="text-[11px] text-[#29243A] font-mono font-bold">
-                {registration.normalized_roll_number}
+                {liveReg.normalized_roll_number}
               </span>
             </div>
           </div>
@@ -245,7 +298,7 @@ export const PassView: React.FC<PassViewProps> = ({
             <div className="p-3 rounded-xl bg-[#FFFCF5] border border-[#E8E2D9]">
               <span className="text-[#6B655D] text-[11px] font-semibold block">Student Name</span>
               <span className="text-base font-bold text-[#29243A] block">
-                {registration.full_name}
+                {liveReg.full_name}
               </span>
             </div>
 
@@ -253,13 +306,13 @@ export const PassView: React.FC<PassViewProps> = ({
               <div className="p-3 rounded-xl bg-[#FFFCF5] border border-[#E8E2D9]">
                 <span className="text-[#6B655D] text-[11px] font-semibold block">College Roll No</span>
                 <span className="text-sm font-bold text-[#6D28D9] font-mono block">
-                  {registration.normalized_roll_number}
+                  {liveReg.normalized_roll_number}
                 </span>
               </div>
               <div className="p-3 rounded-xl bg-[#FFFCF5] border border-[#E8E2D9]">
                 <span className="text-[#6B655D] text-[11px] font-semibold block">Academic Year</span>
                 <span className="text-sm font-bold text-[#29243A] block">
-                  {registration.academic_year} (Undergraduate)
+                  {liveReg.academic_year} (Undergraduate)
                 </span>
               </div>
             </div>
@@ -270,13 +323,13 @@ export const PassView: React.FC<PassViewProps> = ({
                   Food Coupon
                 </span>
                 <span className="text-sm font-black text-[#29243A] block">
-                  {registration.food_preference} Dinner
+                  {liveReg.food_preference} Dinner
                 </span>
               </div>
               <div className="p-3 rounded-xl bg-[#FFFCF5] border border-[#E8E2D9]">
                 <span className="text-[#6B655D] text-[11px] font-semibold block">Contact</span>
                 <span className="text-xs font-medium text-[#29243A] block">
-                  {maskContactNumber(registration.contact_number)}
+                  {maskContactNumber(liveReg.contact_number)}
                 </span>
               </div>
             </div>
@@ -284,12 +337,12 @@ export const PassView: React.FC<PassViewProps> = ({
             <div className="p-3 rounded-xl bg-[#FFFCF5] border border-[#E8E2D9] text-[11px] text-[#6B655D] space-y-1">
               <div className="flex justify-between">
                 <span>Reg ID:</span>
-                <span className="font-mono text-[#29243A] font-semibold">{registration.id}</span>
+                <span className="font-mono text-[#29243A] font-semibold">{liveReg.id}</span>
               </div>
               <div className="flex justify-between">
                 <span>Payment Status:</span>
                 <span className="font-bold text-[#15803D]">
-                  {registration.payment_status} ({formatINR(registration.expected_amount_minor_units, registration.currency)})
+                  {liveReg.payment_status} ({formatINR(liveReg.expected_amount_minor_units, liveReg.currency)})
                 </span>
               </div>
             </div>
@@ -307,14 +360,14 @@ export const PassView: React.FC<PassViewProps> = ({
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
             {/* Step 1: Main Gate Entry */}
-            <div className={`p-3 rounded-xl border flex items-center justify-between ${
-              pass.redeemed_at || pass.status === 'USED'
-                ? 'bg-emerald-50 border-emerald-200 text-[#15803D]'
+            <div className={`p-3 rounded-xl border flex items-center justify-between transition-all ${
+              isGateAdmitted
+                ? 'bg-emerald-50 border-emerald-300 text-[#15803D]'
                 : 'bg-white border-[#E8E2D9] text-[#29243A]'
             }`}>
               <div className="flex items-center gap-2">
                 <div className={`w-6 h-6 rounded-lg flex items-center justify-center font-bold text-xs ${
-                  pass.redeemed_at || pass.status === 'USED'
+                  isGateAdmitted
                     ? 'bg-emerald-600 text-white'
                     : 'bg-[#FFF0D9] text-[#E99A20]'
                 }`}>
@@ -326,27 +379,27 @@ export const PassView: React.FC<PassViewProps> = ({
                 </div>
               </div>
               <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                pass.redeemed_at || pass.status === 'USED'
+                isGateAdmitted
                   ? 'bg-emerald-100 text-[#15803D]'
                   : 'bg-slate-100 text-[#6B655D]'
               }`}>
-                {pass.redeemed_at || pass.status === 'USED' ? '✓ Admitted' : 'Pending Scan'}
+                {isGateAdmitted ? `✓ Admitted ${livePass.redeemed_at ? formatKolkataDateTime(livePass.redeemed_at) : ''}` : 'Pending Scan'}
               </span>
             </div>
 
             {/* Step 2: Dinner Food Counter */}
-            <div className={`p-3 rounded-xl border flex items-center justify-between ${
-              pass.dinner_redeemed_at
-                ? 'bg-amber-50 border-amber-200 text-[#B45309]'
-                : (pass.redeemed_at || pass.status === 'USED')
-                ? 'bg-purple-50 border-purple-200 text-[#6D28D9]'
+            <div className={`p-3 rounded-xl border flex items-center justify-between transition-all ${
+              isDinnerClaimed
+                ? 'bg-amber-50 border-amber-300 text-[#B45309]'
+                : isGateAdmitted
+                ? 'bg-purple-50 border-purple-300 text-[#6D28D9]'
                 : 'bg-slate-50/60 border-slate-200 text-[#6B655D]'
             }`}>
               <div className="flex items-center gap-2">
                 <div className={`w-6 h-6 rounded-lg flex items-center justify-center font-bold text-xs ${
-                  pass.dinner_redeemed_at
+                  isDinnerClaimed
                     ? 'bg-[#E99A20] text-white'
-                    : (pass.redeemed_at || pass.status === 'USED')
+                    : isGateAdmitted
                     ? 'bg-[#6D28D9] text-white'
                     : 'bg-slate-200 text-slate-500'
                 }`}>
@@ -354,19 +407,19 @@ export const PassView: React.FC<PassViewProps> = ({
                 </div>
                 <div>
                   <span className="text-xs font-bold block">2nd Scan: Dinner Coupon</span>
-                  <span className="text-[10px] text-[#6B655D]">{registration.food_preference} Food Counter</span>
+                  <span className="text-[10px] text-[#6B655D]">{liveReg.food_preference} Food Counter</span>
                 </div>
               </div>
               <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                pass.dinner_redeemed_at
+                isDinnerClaimed
                   ? 'bg-amber-100 text-[#B45309]'
-                  : (pass.redeemed_at || pass.status === 'USED')
-                  ? 'bg-purple-100 text-[#6D28D9]'
+                  : isGateAdmitted
+                  ? 'bg-purple-100 text-[#6D28D9] animate-pulse'
                   : 'bg-rose-50 text-[#B91C1C]'
               }`}>
-                {pass.dinner_redeemed_at
-                  ? '✓ Claimed'
-                  : (pass.redeemed_at || pass.status === 'USED')
+                {isDinnerClaimed
+                  ? `✓ Claimed ${livePass.dinner_redeemed_at ? formatKolkataDateTime(livePass.dinner_redeemed_at) : ''}`
+                  : isGateAdmitted
                   ? 'Ready for Dinner'
                   : '🔒 Scan Gate First'}
               </span>
