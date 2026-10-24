@@ -925,7 +925,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   });
 
   return (
-    <div className="flex flex-col lg:flex-row gap-6 min-h-[82vh] bg-[#FFFCF5]">
+    <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 min-h-[82vh] w-full max-w-full min-w-0 bg-[#FFFCF5]">
       {/* ----------------- MOBILE NAVIGATION BAR (< lg) ----------------- */}
       <div className="lg:hidden bg-white border border-[#E8E2D9] rounded-3xl p-4 shadow-xs space-y-3">
         <div className="flex items-center justify-between pb-2 border-b border-[#E8E2D9]">
@@ -1000,7 +1000,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       </div>
 
       {/* ----------------- DESKTOP SIDEBAR (lg:flex) ----------------- */}
-      <aside className="hidden lg:flex w-64 bg-white border border-[#E8E2D9] rounded-3xl p-5 shadow-xs flex-col justify-between shrink-0">
+      <aside className="hidden lg:flex w-60 xl:w-64 bg-white border border-[#E8E2D9] rounded-3xl p-4 xl:p-5 shadow-xs flex-col justify-between shrink-0">
         <div className="space-y-6">
           {/* Admin Header Badge */}
           <div className="flex items-center gap-3 pb-5 border-b border-[#E8E2D9]">
@@ -1212,7 +1212,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       </aside>
 
       {/* ----------------- IVORY WORKSPACE ----------------- */}
-      <section className="flex-1 bg-[#FFFCF5] space-y-6">
+      <section className="flex-1 min-w-0 max-w-full space-y-5 lg:space-y-6 overflow-hidden">
         {/* Real-time Sync Status Notification */}
         {syncFeedback && (
           <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs font-bold flex items-center justify-between shadow-xs transition-all">
@@ -1391,39 +1391,44 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         {/* ----------------- 2. REGISTRATIONS TAB ----------------- */}
         {activeTab === 'REGISTRATIONS' && (
           <div className="space-y-6">
-            <div className="p-6 rounded-3xl bg-white border border-[#E8E2D9] shadow-xs space-y-5">
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div>
-                  <h2 className="text-xl font-black text-[#29243A]">Student Registrations</h2>
-                  <p className="text-xs text-[#6B655D]">
+            <div className="p-4 sm:p-6 rounded-2xl sm:rounded-3xl bg-white border border-[#E8E2D9] shadow-xs space-y-4 sm:space-y-5 w-full max-w-full min-w-0 overflow-hidden">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-lg sm:text-xl font-black text-[#29243A]">Student Registrations</h2>
+                    <span className="px-2 py-0.5 rounded-full bg-[#FFF0D9] text-[#6D28D9] font-bold text-xs border border-[#E8E2D9]">
+                      {filteredRegistrations.length}
+                    </span>
+                  </div>
+                  <p className="text-xs text-[#6B655D] mt-0.5">
                     Search, filter, roll number sorting, timestamps audit, and full student record management.
                   </p>
                 </div>
-                <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-2 flex-wrap shrink-0">
                   <button
                     type="button"
                     onClick={exportRegistrationsExcel}
-                    className="px-3.5 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-[#15803D] text-xs font-bold border border-emerald-200 flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                    className="px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-[#15803D] text-xs font-bold border border-emerald-200 flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
                     title="Export styled Excel workbook (.xls)"
                   >
-                    <FileSpreadsheet className="w-4 h-4 text-[#15803D]" />
+                    <FileSpreadsheet className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#15803D]" />
                     <span>Export Excel</span>
                   </button>
                   <button
                     type="button"
                     onClick={exportRegistrationsPdf}
-                    className="px-3.5 py-2 rounded-xl bg-[#6D28D9] hover:bg-[#5B21B6] text-white text-xs font-bold shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                    className="px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-[#6D28D9] hover:bg-[#5B21B6] text-white text-xs font-bold shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer"
                     title="Export formatted PDF report with timestamps"
                   >
-                    <FileText className="w-4 h-4" />
+                    <FileText className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                     <span>Export PDF</span>
                   </button>
                 </div>
               </div>
 
               {/* Filters */}
-              <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5 flex-1">
+              <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-2.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2 sm:gap-2.5 flex-1 min-w-0">
                   <div className="relative">
                     <Search className="w-4 h-4 text-[#6B655D] absolute left-3 top-1/2 -translate-y-1/2" />
                     <input
@@ -1457,7 +1462,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       setYearFilter(e.target.value as 'ALL' | AcademicYear | 'FY' | 'SY');
                       setCurrentPage(1);
                     }}
-                    className="px-3 py-2 rounded-xl bg-[#FFFCF5] border border-[#E8E2D9] text-xs text-[#29243A] font-semibold cursor-pointer"
+                    className="px-3 py-2 rounded-xl bg-[#FFFCF5] border border-[#E8E2D9] text-xs text-[#29243A] font-semibold cursor-pointer truncate"
                   >
                     <option value="ALL">All Academic Years</option>
                     <option value="FY - M.Sc.IT">FY - M.Sc.IT</option>
@@ -1474,7 +1479,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       setFoodFilter(e.target.value as 'ALL' | FoodPreference);
                       setCurrentPage(1);
                     }}
-                    className="px-3 py-2 rounded-xl bg-[#FFFCF5] border border-[#E8E2D9] text-xs text-[#29243A] font-semibold cursor-pointer"
+                    className="px-3 py-2 rounded-xl bg-[#FFFCF5] border border-[#E8E2D9] text-xs text-[#29243A] font-semibold cursor-pointer truncate"
                   >
                     <option value="ALL">All Meals (Regular & Jain)</option>
                     <option value="Regular">Regular Dinner</option>
@@ -1487,7 +1492,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       setPaymentFilter(e.target.value as 'ALL' | PaymentStatus);
                       setCurrentPage(1);
                     }}
-                    className="px-3 py-2 rounded-xl bg-[#FFFCF5] border border-[#E8E2D9] text-xs text-[#29243A] font-semibold cursor-pointer"
+                    className="px-3 py-2 rounded-xl bg-[#FFFCF5] border border-[#E8E2D9] text-xs text-[#29243A] font-semibold cursor-pointer truncate"
                   >
                     <option value="ALL">All Payment Statuses</option>
                     <option value="PAID">PAID</option>
@@ -1507,7 +1512,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       setEntryFilter('ALL');
                       setCurrentPage(1);
                     }}
-                    className="px-3.5 py-2 rounded-xl bg-[#FFF0D9] hover:bg-[#FFE6C2] text-[#6D28D9] border border-[#E8E2D9] text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-2xs whitespace-nowrap self-start sm:self-auto"
+                    className="px-3 py-2 rounded-xl bg-[#FFF0D9] hover:bg-[#FFE6C2] text-[#6D28D9] border border-[#E8E2D9] text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-2xs whitespace-nowrap shrink-0 self-start lg:self-auto"
                     title="Reset all filters to default"
                   >
                     <RotateCcw className="w-3.5 h-3.5 text-[#E99A20]" />
@@ -1516,17 +1521,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 )}
               </div>
 
+              {/* Mobile swipe helper indicator */}
+              <div className="lg:hidden flex items-center justify-between text-[11px] text-[#6B655D] px-1">
+                <span className="flex items-center gap-1 font-medium text-[#6D28D9]">
+                  <span>← Swipe table horizontally to see all columns →</span>
+                </span>
+                <span className="font-bold text-[#29243A]">
+                  Page {currentPage} of {totalPages}
+                </span>
+              </div>
+
               {/* Responsive Table */}
-              <div className="overflow-x-auto rounded-2xl border border-[#E8E2D9] shadow-2xs">
-                <table className="w-full min-w-[940px] text-left text-xs text-[#29243A]">
+              <div className="overflow-x-auto w-full max-w-full rounded-xl sm:rounded-2xl border border-[#E8E2D9] shadow-2xs scrollbar-thin scrollbar-thumb-amber-300 scrollbar-track-[#FFF0D9]/30">
+                <table className="w-full min-w-[820px] lg:min-w-0 text-left text-xs text-[#29243A] border-collapse">
                   <thead className="bg-[#FFF0D9] text-[#29243A] font-bold border-b border-[#E8E2D9]">
                     <tr>
                       <th
-                        className="p-3.5 cursor-pointer hover:bg-[#FFE6C2] transition-colors select-none w-20"
+                        className="px-3 py-3 cursor-pointer hover:bg-[#FFE6C2] transition-colors select-none w-20 whitespace-nowrap"
                         onClick={() => handleToggleSort('roll')}
                         title="Click to sort by Roll Number"
                       >
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1">
                           <span>Roll No</span>
                           {sortField === 'roll' ? (
                             sortOrder === 'asc' ? (
@@ -1535,16 +1550,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               <ArrowDown className="w-3.5 h-3.5 text-[#6D28D9]" />
                             )
                           ) : (
-                            <ArrowUpDown className="w-3.5 h-3.5 text-[#6B655D]/40" />
+                            <ArrowUpDown className="w-3 h-3 text-[#6B655D]/40" />
                           )}
                         </div>
                       </th>
                       <th
-                        className="p-3.5 cursor-pointer hover:bg-[#FFE6C2] transition-colors select-none"
+                        className="px-3 py-3 cursor-pointer hover:bg-[#FFE6C2] transition-colors select-none whitespace-nowrap"
                         onClick={() => handleToggleSort('name')}
                         title="Click to sort by Student Name"
                       >
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1">
                           <span>Student</span>
                           {sortField === 'name' ? (
                             sortOrder === 'asc' ? (
@@ -1553,16 +1568,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               <ArrowDown className="w-3.5 h-3.5 text-[#6D28D9]" />
                             )
                           ) : (
-                            <ArrowUpDown className="w-3.5 h-3.5 text-[#6B655D]/40" />
+                            <ArrowUpDown className="w-3 h-3 text-[#6B655D]/40" />
                           )}
                         </div>
                       </th>
-                      <th className="p-3.5">Course & Meal</th>
-                      <th className="p-3.5">Timestamps</th>
-                      <th className="p-3.5">Gate Entry QR</th>
-                      <th className="p-3.5">Dinner QR Scan</th>
-                      <th className="p-3.5">Payment</th>
-                      <th className="p-3.5 text-right">Actions</th>
+                      <th className="px-3 py-3 whitespace-nowrap">Course & Meal</th>
+                      <th className="px-3 py-3 whitespace-nowrap">Timestamps</th>
+                      <th className="px-3 py-3 whitespace-nowrap">Gate Entry QR</th>
+                      <th className="px-3 py-3 whitespace-nowrap">Dinner QR Scan</th>
+                      <th className="px-3 py-3 whitespace-nowrap">Payment</th>
+                      <th className="px-3 py-3 text-right whitespace-nowrap sticky right-0 bg-[#FFF0D9] z-10 shadow-[-4px_0_6px_rgba(0,0,0,0.03)]">
+                        Actions
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#E8E2D9] bg-white">
@@ -1574,12 +1591,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </tr>
                     ) : (
                       paginatedRegistrations.map((reg) => (
-                        <tr key={reg.id} className="hover:bg-[#FFF0D9]/30 transition-colors">
-                          <td className="p-3.5 font-mono font-bold text-[#6D28D9] whitespace-nowrap">
+                        <tr key={reg.id} className="hover:bg-[#FFF0D9]/30 transition-colors group">
+                          <td className="px-3 py-2.5 sm:py-3 font-mono font-bold text-[#6D28D9] whitespace-nowrap">
                             {reg.normalized_roll_number}
                           </td>
-                          <td className="p-3.5 whitespace-nowrap">
-                            <div className="flex items-center gap-2.5">
+                          <td className="px-3 py-2.5 sm:py-3 whitespace-nowrap">
+                            <div className="flex items-center gap-2">
                               {reg.identity_photo_url ? (
                                 <img
                                   src={reg.identity_photo_url}
@@ -1591,29 +1608,29 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                       roll: reg.normalized_roll_number,
                                     })
                                   }
-                                  className="w-9 h-9 rounded-xl object-cover border border-[#E8E2D9] shadow-xs cursor-pointer hover:scale-110 transition-transform shrink-0"
+                                  className="w-8 h-8 rounded-lg object-cover border border-[#E8E2D9] shadow-xs cursor-pointer hover:scale-110 transition-transform shrink-0"
                                   title="Click to view full photo"
                                 />
                               ) : (
-                                <div className="w-9 h-9 rounded-xl bg-[#FFF0D9] border border-[#E8E2D9] flex items-center justify-center text-[#E99A20] text-xs font-bold shrink-0">
+                                <div className="w-8 h-8 rounded-lg bg-[#FFF0D9] border border-[#E8E2D9] flex items-center justify-center text-[#E99A20] text-xs font-bold shrink-0">
                                   {reg.full_name.charAt(0).toUpperCase()}
                                 </div>
                               )}
-                              <div>
-                                <span className="font-bold text-[#29243A] block">{reg.full_name}</span>
+                              <div className="min-w-0">
+                                <span className="font-bold text-[#29243A] block truncate max-w-[140px] sm:max-w-none">{reg.full_name}</span>
                                 <span className="text-[10px] text-[#6B655D] font-mono">{reg.contact_number}</span>
                               </div>
                             </div>
                           </td>
-                          <td className="p-3.5 whitespace-nowrap space-y-1">
+                          <td className="px-3 py-2.5 sm:py-3 whitespace-nowrap space-y-0.5">
                             <div className="text-[#29243A] font-semibold text-xs">{reg.academic_year}</div>
-                            <div className="flex items-center gap-1.5 flex-wrap">
+                            <div className="flex items-center gap-1 flex-wrap">
                               <span className="px-2 py-0.5 rounded-full bg-[#FFF0D9] text-[#29243A] font-bold text-[10px]">
                                 {reg.food_preference}
                               </span>
                               {reg.performance_talent && (
                                 <span
-                                  className="px-2 py-0.5 rounded-full bg-purple-50 text-[#6D28D9] font-bold text-[10px] border border-purple-200 truncate max-w-[110px]"
+                                  className="px-2 py-0.5 rounded-full bg-purple-50 text-[#6D28D9] font-bold text-[10px] border border-purple-200 truncate max-w-[100px]"
                                   title={reg.performance_talent}
                                 >
                                   🎭 {reg.performance_talent}
@@ -1621,13 +1638,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               )}
                             </div>
                           </td>
-                          <td className="p-3.5 text-[10px] space-y-0.5 whitespace-nowrap">
-                            <div className="flex items-center gap-1.5 text-[#29243A]">
-                              <span className="font-bold text-[#6B655D] w-8">Reg:</span>
+                          <td className="px-3 py-2.5 sm:py-3 text-[10px] space-y-0.5 whitespace-nowrap">
+                            <div className="flex items-center gap-1 text-[#29243A]">
+                              <span className="font-bold text-[#6B655D] w-7">Reg:</span>
                               <span>{formatKolkataDateTime(reg.created_at)}</span>
                             </div>
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-bold text-[#6B655D] w-8">Appr:</span>
+                            <div className="flex items-center gap-1">
+                              <span className="font-bold text-[#6B655D] w-7">Appr:</span>
                               <span
                                 className={
                                   reg.payment?.verified_at
@@ -1647,11 +1664,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           </td>
 
                           {/* 1. Gate Entry QR Checkpoint */}
-                          <td className="p-3.5 whitespace-nowrap">
+                          <td className="px-3 py-2.5 sm:py-3 whitespace-nowrap">
                             {reg.pass ? (
                               reg.pass.redeemed_at || reg.pass.status === 'USED' ? (
                                 <div className="space-y-0.5">
-                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-50 text-[#15803D] border border-emerald-200 font-bold text-[10px]">
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-[#15803D] border border-emerald-200 font-bold text-[10px]">
                                     <CheckCircle2 className="w-3 h-3 text-[#15803D]" /> Gate Done
                                   </span>
                                   <div className="text-[10px] text-[#6B655D]">
@@ -1659,7 +1676,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   </div>
                                 </div>
                               ) : (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-100 text-[#6B655D] border border-slate-200 font-medium text-[10px]">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-[#6B655D] border border-slate-200 font-medium text-[10px]">
                                   ○ Not Scanned
                                 </span>
                               )
@@ -1669,11 +1686,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           </td>
 
                           {/* 2. Dinner QR Scan Checkpoint */}
-                          <td className="p-3.5 whitespace-nowrap">
+                          <td className="px-3 py-2.5 sm:py-3 whitespace-nowrap">
                             {reg.pass ? (
                               reg.pass.dinner_redeemed_at ? (
                                 <div className="space-y-0.5">
-                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-50 text-[#B45309] border border-amber-200 font-bold text-[10px]">
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 text-[#B45309] border border-amber-200 font-bold text-[10px]">
                                     <Utensils className="w-3 h-3 text-[#E99A20]" /> Dinner Done
                                   </span>
                                   <div className="text-[10px] text-[#6B655D]">
@@ -1681,12 +1698,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   </div>
                                 </div>
                               ) : reg.pass.redeemed_at || reg.pass.status === 'USED' ? (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-purple-50 text-[#6D28D9] border border-purple-200 font-bold text-[10px]">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-50 text-[#6D28D9] border border-purple-200 font-bold text-[10px]">
                                   Ready for Dinner
                                 </span>
                               ) : (
                                 <span
-                                  className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-rose-50 text-[#B91C1C] border border-rose-200 font-medium text-[10px]"
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-50 text-[#B91C1C] border border-rose-200 font-medium text-[10px]"
                                   title="Gate Entry QR must be scanned first"
                                 >
                                   🔒 Gate Required
@@ -1698,9 +1715,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           </td>
 
                           {/* Payment Status */}
-                          <td className="p-3.5 whitespace-nowrap">
+                          <td className="px-3 py-2.5 sm:py-3 whitespace-nowrap">
                             <span
-                              className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
                                 reg.payment_status === 'PAID'
                                   ? 'bg-emerald-50 text-[#15803D] border border-emerald-200'
                                   : reg.payment_status === 'PENDING'
@@ -1712,13 +1729,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             </span>
                           </td>
 
-                          {/* Actions Column (100% visible and uncluttered) */}
-                          <td className="p-3.5 text-right whitespace-nowrap">
-                            <div className="flex items-center justify-end gap-1.5">
+                          {/* Actions Column (Sticky on right so never cut off) */}
+                          <td className="px-3 py-2.5 sm:py-3 text-right whitespace-nowrap sticky right-0 bg-white group-hover:bg-[#FFFDF7] z-10 shadow-[-4px_0_6px_rgba(0,0,0,0.03)]">
+                            <div className="flex items-center justify-end gap-1">
                               <button
                                 type="button"
                                 onClick={() => setSelectedReg(reg)}
-                                className="px-2.5 py-1 rounded-lg bg-[#FFFCF5] hover:bg-[#FFF0D9] text-[#29243A] border border-[#E8E2D9] text-[11px] font-bold cursor-pointer transition-colors shadow-2xs"
+                                className="px-2 py-1 rounded-lg bg-[#FFFCF5] hover:bg-[#FFF0D9] text-[#29243A] border border-[#E8E2D9] text-[10px] font-bold cursor-pointer transition-colors shadow-2xs"
                                 title="View full registration details"
                               >
                                 Details
@@ -1727,7 +1744,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               <button
                                 type="button"
                                 onClick={() => handleStartEditReg(reg)}
-                                className="px-2.5 py-1 rounded-lg bg-[#FFF0D9] hover:bg-[#FFE6C2] text-[#6D28D9] border border-[#E8E2D9] text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                                className="px-2 py-1 rounded-lg bg-[#FFF0D9] hover:bg-[#FFE6C2] text-[#6D28D9] border border-[#E8E2D9] text-[10px] font-bold inline-flex items-center gap-0.5 cursor-pointer transition-colors shadow-2xs"
                                 title="Edit student registration details"
                               >
                                 <Edit3 className="w-2.5 h-2.5" />
@@ -1738,7 +1755,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 <button
                                   type="button"
                                   onClick={() => handleReactivatePass(reg.pass!.id, reg.full_name)}
-                                  className="px-2 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-[#15803D] border border-emerald-200 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                                  className="px-2 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-[#15803D] border border-emerald-200 text-[10px] font-bold inline-flex items-center gap-0.5 cursor-pointer transition-colors shadow-2xs"
                                   title="Allow student to re-enter using their existing QR code"
                                 >
                                   <RotateCcw className="w-2.5 h-2.5" />
@@ -1750,7 +1767,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 <button
                                   type="button"
                                   onClick={() => handleMarkGateDone(reg.pass!.id, reg.full_name)}
-                                  className="px-2 py-1 rounded-lg bg-purple-50 hover:bg-purple-100 text-[#6D28D9] border border-purple-200 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                                  className="px-2 py-1 rounded-lg bg-purple-50 hover:bg-purple-100 text-[#6D28D9] border border-purple-200 text-[10px] font-bold inline-flex items-center gap-0.5 cursor-pointer transition-colors shadow-2xs"
                                   title="Manually mark Gate Entry QR as Done"
                                 >
                                   <CheckCircle2 className="w-2.5 h-2.5" />
@@ -1762,7 +1779,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 <button
                                   type="button"
                                   onClick={() => handleMarkDinnerDone(reg.pass!.id, reg.full_name)}
-                                  className="px-2 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-[#B45309] border border-amber-200 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                                  className="px-2 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-[#B45309] border border-amber-200 text-[10px] font-bold inline-flex items-center gap-0.5 cursor-pointer transition-colors shadow-2xs"
                                   title="Manually mark Dinner QR Scan as Done"
                                 >
                                   <Utensils className="w-2.5 h-2.5 text-[#E99A20]" />
@@ -1774,7 +1791,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 <button
                                   type="button"
                                   onClick={() => handleResetDinnerScan(reg.pass!.id, reg.full_name)}
-                                  className="px-2 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-[#B45309] border border-amber-200 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                                  className="px-2 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-[#B45309] border border-amber-200 text-[10px] font-bold inline-flex items-center gap-0.5 cursor-pointer transition-colors shadow-2xs"
                                   title="Reset dinner coupon so student can claim meal"
                                 >
                                   <RotateCcw className="w-2.5 h-2.5" />

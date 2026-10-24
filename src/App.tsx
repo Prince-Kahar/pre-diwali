@@ -199,7 +199,13 @@ export function App() {
       />
 
       {/* Main Container */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <main
+        className={`flex-1 w-full mx-auto py-4 sm:py-6 transition-all ${
+          activePortal === 'ADMIN'
+            ? 'max-w-[1680px] px-2 sm:px-4 lg:px-6'
+            : 'max-w-7xl px-4 sm:px-6 lg:px-8'
+        }`}
+      >
         {/* ----------------- 1. STUDENT REGISTRATION PORTAL ----------------- */}
         {activePortal === 'STUDENT' && (
           <div>

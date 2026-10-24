@@ -23,7 +23,11 @@ export const Navbar: React.FC<NavbarProps> = ({
 }) => {
   return (
     <header className="sticky top-0 z-50 backdrop-blur-md bg-white/95 border-b border-[#E8E2D9] shadow-xs">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div
+        className={`mx-auto px-4 sm:px-6 lg:px-8 transition-all ${
+          activePortal === 'ADMIN' ? 'max-w-[1680px]' : 'max-w-7xl'
+        }`}
+      >
         <div className="flex items-center justify-between h-20">
           {/* Logo & Event Title */}
           <div
