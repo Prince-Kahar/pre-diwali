@@ -25,4 +25,5 @@ dist-ssr
 hostinger-deploy.zip
 prediwali-sascma.tar.gz
 *.tar.gz
+!prediwali-hostinger-deploy.tar.gz
 
