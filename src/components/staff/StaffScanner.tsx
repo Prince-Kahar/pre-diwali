@@ -24,10 +24,14 @@ import {
   WifiOff,
   Download,
   Image as ImageIcon,
+  Volume2,
+  VolumeX,
+  Zap,
 } from 'lucide-react';
 import { EventSettings, UserProfile, ScanVerificationResult, EntryScanLog, ScanType } from '../../types';
 import { dataService } from '../../services/dataService';
 import { formatKolkataDateTime } from '../../lib/crypto';
+import { sound } from '../../lib/sound';
 import collegeLogo from '../../assets/logo.png';
 
 interface BeforeInstallPromptEvent extends Event {
@@ -62,10 +66,21 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [isStandalone, setIsStandalone] = useState(false);
   const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
+  const [soundEnabled, setSoundEnabled] = useState(sound.isSoundEnabled());
 
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const cooldownRef = useRef(false);
   const recentlyProcessedTokensRef = useRef<Map<string, number>>(new Map());
+
+  const toggleSound = () => {
+    const next = !soundEnabled;
+    setSoundEnabled(next);
+    sound.setSoundEnabled(next);
+    if (next) {
+      sound.init();
+      sound.playScanBeep();
+    }
+  };
 
   useEffect(() => {
     loadStaffScans();
@@ -123,6 +138,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
 
   const startCamera = async () => {
     setScanResult(null);
+    sound.init(); // Unlock Web Audio API context immediately on user click
     try {
       if (scannerRef.current) {
         try {
@@ -133,23 +149,34 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
           // ignore
         }
       } else {
-        scannerRef.current = new Html5Qrcode('qr-reader-container');
+        // Enable hardware-accelerated native BarcodeDetector API for instant recognition
+        scannerRef.current = new Html5Qrcode('qr-reader-container', {
+          experimentalFeatures: {
+            useBarCodeDetectorIfSupported: true,
+          },
+          verbose: false,
+        });
       }
 
       await scannerRef.current.start(
         { facingMode: 'environment' },
         {
-          fps: 10,
+          fps: 25, // 25 FPS (2.5x faster frame analysis than 10 FPS)
           qrbox: (viewfinderWidth, viewfinderHeight) => {
+            // Generous scanning area (88% of edge) so QR is recognized instantly from any angle
             const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-            const qrboxSize = Math.max(180, Math.floor(minEdge * 0.72));
+            const qrboxSize = Math.max(220, Math.floor(minEdge * 0.88));
             return { width: qrboxSize, height: qrboxSize };
           },
+          aspectRatio: 1.0,
         },
         async (decodedText) => {
           if (cooldownRef.current || isProcessing) return;
           const cleanToken = decodedText.trim();
           if (!cleanToken) return;
+
+          // INSTANT AUDIO BEEP on QR Detection!
+          sound.playScanBeep();
 
           // Prevent accidental instant duplicate auto-scans for the same token
           const now = Date.now();
@@ -161,8 +188,8 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
           cooldownRef.current = true;
           recentlyProcessedTokensRef.current.set(cleanToken, now);
 
-          // STOP CAMERA IMMEDIATELY: Ensure strict 1-time check and NEVER auto-scan again
-          await stopCamera();
+          // Stop camera immediately in background so it never scans twice
+          stopCamera();
 
           // Process the single verified scan
           await handleProcessToken(cleanToken);
@@ -226,7 +253,15 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
       );
       setScanResult(result);
       loadStaffScans();
+
+      // Play authoritative audio feedback
+      if (result.success) {
+        sound.playSuccessChime();
+      } else {
+        sound.playErrorBuzz();
+      }
     } catch (err: unknown) {
+      sound.playErrorBuzz();
       setScanResult({
         success: false,
         status: 'INVALID_PASS',
@@ -242,7 +277,8 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
     e.preventDefault();
     if (!manualToken.trim()) return;
     const clean = manualToken.trim();
-    await stopCamera();
+    sound.playScanBeep();
+    stopCamera();
     await handleProcessToken(clean);
     setManualToken('');
     setShowManualInput(false);
@@ -317,6 +353,21 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
               <span>Install App</span>
             </button>
           )}
+
+          {/* Audio Beep Feedback Toggle */}
+          <button
+            type="button"
+            onClick={toggleSound}
+            className={`p-2.5 rounded-xl border text-xs flex items-center gap-1.5 transition-colors cursor-pointer font-bold shadow-xs ${
+              soundEnabled
+                ? 'bg-emerald-50 hover:bg-emerald-100 border-emerald-200 text-[#15803D]'
+                : 'bg-rose-50 hover:bg-rose-100 border-rose-200 text-[#B91C1C]'
+            }`}
+            title={soundEnabled ? 'Scan Beep Sound is ON (Click to Mute)' : 'Scan Sound is Muted (Click to Enable)'}
+          >
+            {soundEnabled ? <Volume2 className="w-4 h-4 text-[#15803D]" /> : <VolumeX className="w-4 h-4 text-[#B91C1C]" />}
+            <span className="hidden sm:inline">{soundEnabled ? 'Beep ON' : 'Muted'}</span>
+          </button>
 
           <button
             type="button"
