@@ -1,13 +1,10 @@
 <IfModule mod_rewrite.c>
   RewriteEngine On
-
-  # Don't rewrite existing files or directories
-  RewriteCond %{REQUEST_FILENAME} -f [OR]
-  RewriteCond %{REQUEST_FILENAME} -d
-  RewriteRule ^ - [L]
-
-  # Rewrite all other requests to index.html for React Single Page App
-  RewriteRule ^ index.html [L]
+  RewriteBase /
+  RewriteRule ^index\.html$ - [L]
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule . /index.html [L]
 </IfModule>
 
 # MIME Types

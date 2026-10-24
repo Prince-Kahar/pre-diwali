@@ -58,50 +58,49 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
           </div>
 
-          {/* Navigation Pill Switches */}
-          <nav className="flex items-center gap-1 sm:gap-1.5 p-1 sm:p-1.5 rounded-2xl bg-[#FFF0D9] border border-[#E8E2D9] shrink-0">
-            <button
-              onClick={() => onSelectPortal('STUDENT')}
-              className={`flex items-center gap-1 sm:gap-1.5 px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
-                activePortal === 'STUDENT'
-                  ? 'bg-[#6D28D9] text-white shadow-sm'
-                  : 'text-[#6B655D] hover:text-[#29243A] hover:bg-white'
-              }`}
-            >
-              <GraduationCap className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-              <span>Student</span>
-            </button>
+          {/* Right Action / Portal Indicator */}
+          {activePortal === 'STUDENT' ? (
+            <div className="flex items-center gap-2">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#FFF0D9] border border-[#E8E2D9] text-xs font-semibold text-[#8B4513] shadow-xs">
+                <Sparkles className="w-3.5 h-3.5 text-[#E99A20] animate-pulse" />
+                <span className="hidden sm:inline">Pre-Diwali Celebration</span>
+                <span className="text-[#6D28D9] font-bold">2026</span>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 sm:gap-3">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-100/80 border border-purple-200 text-[#6D28D9] font-bold text-xs shadow-xs">
+                {activePortal === 'ADMIN' ? (
+                  <>
+                    <Shield className="w-3.5 h-3.5 text-[#6D28D9]" />
+                    <span>Admin Portal</span>
+                    {adminLoggedIn && (
+                      <span className="w-2 h-2 rounded-full bg-[#15803D] animate-pulse" />
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <QrCode className="w-3.5 h-3.5 text-[#6D28D9]" />
+                    <span>Staff Portal</span>
+                    {staffLoggedIn && (
+                      <span className="w-2 h-2 rounded-full bg-[#15803D] animate-pulse" />
+                    )}
+                  </>
+                )}
+              </div>
 
-            <button
-              onClick={() => onSelectPortal('STAFF')}
-              className={`flex items-center gap-1 sm:gap-1.5 px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer relative ${
-                activePortal === 'STAFF'
-                  ? 'bg-[#6D28D9] text-white shadow-sm'
-                  : 'text-[#6B655D] hover:text-[#29243A] hover:bg-white'
-              }`}
-            >
-              <QrCode className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-              <span>Staff</span>
-              {staffLoggedIn && (
-                <span className="w-2 h-2 rounded-full bg-[#15803D] absolute top-1.5 right-1.5 animate-pulse" />
-              )}
-            </button>
-
-            <button
-              onClick={() => onSelectPortal('ADMIN')}
-              className={`flex items-center gap-1 sm:gap-1.5 px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer relative ${
-                activePortal === 'ADMIN'
-                  ? 'bg-[#6D28D9] text-white shadow-sm'
-                  : 'text-[#6B655D] hover:text-[#29243A] hover:bg-white'
-              }`}
-            >
-              <Shield className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-              <span>Admin</span>
-              {adminLoggedIn && (
-                <span className="w-2 h-2 rounded-full bg-[#E99A20] absolute top-1.5 right-1.5" />
-              )}
-            </button>
-          </nav>
+              <button
+                type="button"
+                onClick={() => onSelectPortal('STUDENT')}
+                className="inline-flex items-center gap-1 sm:gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-[#FFF0D9] hover:bg-[#FFE3B9] text-[#29243A] hover:text-[#6D28D9] font-bold text-xs sm:text-sm border border-[#E8E2D9] transition-all cursor-pointer shadow-xs"
+                title="Go back to Student Portal"
+              >
+                <span>&larr;</span>
+                <span className="hidden sm:inline">Student View</span>
+                <span className="sm:hidden">Exit</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </header>

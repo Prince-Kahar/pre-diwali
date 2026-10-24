@@ -14,19 +14,62 @@ import { AdminLogin } from './components/admin/AdminLogin';
 import { StaffScanner } from './components/staff/StaffScanner';
 import { StaffLogin } from './components/staff/StaffLogin';
 
+// Helper to determine portal from current URL path, hash, or query parameter
+const getPortalFromUrl = (): ActivePortal => {
+  if (typeof window === 'undefined') return 'STUDENT';
+
+  // 1. Check URL pathname (e.g. /staff, /staff/, /admin, /admin/)
+  const path = window.location.pathname.toLowerCase().replace(/\/+$/, '');
+  if (path === '/staff' || path.endsWith('/staff')) return 'STAFF';
+  if (path === '/admin' || path.endsWith('/admin')) return 'ADMIN';
+
+  // 2. Check hash route (e.g. #/staff, #/admin)
+  const hash = window.location.hash.toLowerCase();
+  if (hash.includes('staff')) return 'STAFF';
+  if (hash.includes('admin')) return 'ADMIN';
+
+  // 3. Check query param (e.g. ?portal=STAFF, ?portal=ADMIN)
+  const params = new URLSearchParams(window.location.search);
+  const portalParam = params.get('portal')?.toUpperCase();
+  if (portalParam === 'STAFF') return 'STAFF';
+  if (portalParam === 'ADMIN') return 'ADMIN';
+
+  return 'STUDENT';
+};
+
 export function App() {
-  const getInitialPortal = (): ActivePortal => {
+  const [activePortal, setActivePortal] = useState<ActivePortal>(getPortalFromUrl);
+  const [eventSettings, setEventSettings] = useState<EventSettings>(dataService.getEventSettings());
+
+  // Function to navigate between portals and synchronize the browser URL path
+  const navigateToPortal = (portal: ActivePortal, replace = false) => {
+    setActivePortal(portal);
+    setLookupMessage(null);
+
     if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      const portalParam = params.get('portal')?.toUpperCase();
-      if (portalParam === 'STAFF') return 'STAFF';
-      if (portalParam === 'ADMIN') return 'ADMIN';
+      const targetPath = portal === 'STAFF' ? '/staff' : portal === 'ADMIN' ? '/admin' : '/';
+      const currentPath = window.location.pathname.toLowerCase().replace(/\/+$/, '');
+      const normalizedTarget = targetPath === '/' ? '' : targetPath;
+
+      if (currentPath !== normalizedTarget) {
+        if (replace) {
+          window.history.replaceState({ portal }, '', targetPath);
+        } else {
+          window.history.pushState({ portal }, '', targetPath);
+        }
+      }
     }
-    return 'STUDENT';
   };
 
-  const [activePortal, setActivePortal] = useState<ActivePortal>(getInitialPortal);
-  const [eventSettings, setEventSettings] = useState<EventSettings>(dataService.getEventSettings());
+  // Sync portal state when user presses browser Back / Forward buttons
+  useEffect(() => {
+    const handlePopState = () => {
+      const portal = getPortalFromUrl();
+      setActivePortal(portal);
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   // Student portal sub-state
   const [studentStep, setStudentStep] = useState<'LANDING' | 'FORM' | 'PASS'>('LANDING');
@@ -149,10 +192,7 @@ export function App() {
       {/* Universal Top Navigation */}
       <Navbar
         activePortal={activePortal}
-        onSelectPortal={(portal) => {
-          setActivePortal(portal);
-          setLookupMessage(null);
-        }}
+        onSelectPortal={(portal) => navigateToPortal(portal)}
         event={eventSettings}
         adminLoggedIn={!!adminUser}
         staffLoggedIn={!!staffUser}
@@ -266,7 +306,10 @@ export function App() {
                 adminUser={adminUser}
                 event={eventSettings}
                 onUpdateEvent={(updated) => setEventSettings(updated)}
-                onLogout={() => setAdminUser(null)}
+                onLogout={() => {
+                  setAdminUser(null);
+                  navigateToPortal('STUDENT');
+                }}
               />
             ) : (
               <AdminLogin onLoginSuccess={(user) => setAdminUser(user)} />
@@ -281,7 +324,10 @@ export function App() {
               <StaffScanner
                 event={eventSettings}
                 staffUser={staffUser}
-                onLogout={() => setStaffUser(null)}
+                onLogout={() => {
+                  setStaffUser(null);
+                  navigateToPortal('STUDENT');
+                }}
               />
             ) : (
               <StaffLogin
