@@ -12,6 +12,7 @@ import {
   ImageIcon,
   Trash2,
   Zap,
+  Download,
 } from 'lucide-react';
 import { EventSettings, Registration, PaymentRecord } from '../../types';
 import { formatINR } from '../../lib/crypto';
@@ -48,9 +49,19 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   const amountRupees = (feeMinor / 100).toFixed(2);
   const cleanUpiId = (event.payment_upi_id || 'madhavikalathiya2007@sbi').trim();
   const cleanUpiName = (event.payment_upi_name || 'Madhavi Kalathiya').trim();
-  const note = `PreDiwali Roll ${registration.normalized_roll_number || ''}`.trim();
   // Standard NPCI UPI URI specification: pa MUST contain raw '@' without '%40', pn URL-encoded (%20 for space)
-  const upiIntent = `upi://pay?pa=${cleanUpiId}&pn=${encodeURIComponent(cleanUpiName)}&am=${amountRupees}&cu=${registration.currency || 'INR'}&tn=${encodeURIComponent(note)}`;
+  // Short alphanumeric note 'PreDiwali' prevents bank gateway rejection or parsing hangs
+  const upiIntent = `upi://pay?pa=${cleanUpiId}&pn=${encodeURIComponent(cleanUpiName)}&am=${amountRupees}&cu=${registration.currency || 'INR'}&tn=PreDiwali`;
+
+  const downloadQrCode = () => {
+    if (!upiQrDataUrl) return;
+    const a = document.createElement('a');
+    a.href = upiQrDataUrl;
+    a.download = `PreDiwali_Payment_QR.png`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
 
   useEffect(() => {
     // Generate UPI QR Code image
@@ -76,7 +87,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
     }
   }, [registration.id, upiIntent]);
 
-  // 1-second instant auto-detection: as soon as payment is approved, immediately open QR Pass
+  // Periodic auto-detection: as soon as payment is approved, immediately open QR Pass
   useEffect(() => {
     const checkApproval = async () => {
       try {
@@ -94,7 +105,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
       }
     };
 
-    const intervalId = setInterval(checkApproval, 1000);
+    const intervalId = setInterval(checkApproval, 3500);
     return () => clearInterval(intervalId);
   }, [registration.id, onPaymentSuccess]);
 
@@ -104,37 +115,35 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
     setTimeout(() => setCopiedUpi(false), 2500);
   };
 
-  const handleTriggerUpi = (customScheme?: string) => {
+  const handleTriggerUpi = (appType?: 'phonepe' | 'gpay' | 'paytm' | 'any') => {
     let targetUrl = upiIntent;
-    if (customScheme) {
-      if (customScheme === 'phonepe://pay') {
-        targetUrl = upiIntent.replace(/^upi:\/\/pay\?/, 'phonepe://pay?');
-      } else if (customScheme === 'tez://upi/pay') {
-        targetUrl = upiIntent.replace(/^upi:\/\/pay\?/, 'tez://upi/pay?');
-      } else if (customScheme === 'paytmmp://pay') {
-        targetUrl = upiIntent.replace(/^upi:\/\/pay\?/, 'paytmmp://pay?');
+
+    if (appType === 'phonepe') {
+      targetUrl = upiIntent.replace(/^upi:\/\/pay\?/, 'phonepe://pay?');
+    } else if (appType === 'paytm') {
+      targetUrl = upiIntent.replace(/^upi:\/\/pay\?/, 'paytmmp://pay?');
+    } else if (appType === 'gpay') {
+      const isAndroid = /Android/i.test(navigator.userAgent);
+      if (isAndroid) {
+        // Modern native Android intent for Google Pay (avoids broken legacy tez:// scheme)
+        const queryParams = upiIntent.replace(/^upi:\/\/pay\?/, '');
+        targetUrl = `intent://pay?${queryParams}#Intent;scheme=upi;package=com.google.android.apps.nbu.paisa.user;end`;
+      } else {
+        targetUrl = upiIntent;
       }
     }
 
+    // Trigger ONCE using single click dispatch (prevents double intent collision that freezes GPay)
     try {
+      const link = document.createElement('a');
+      link.href = targetUrl;
+      link.rel = 'noreferrer noopener';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch {
       window.location.href = targetUrl;
-    } catch (e) {
-      console.warn('Direct location assign failed:', e);
     }
-
-    // Secondary fallback for Chrome Android PWA
-    setTimeout(() => {
-      try {
-        const link = document.createElement('a');
-        link.href = targetUrl;
-        link.rel = 'noreferrer noopener';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-      } catch (err) {
-        console.warn('Fallback link click notice:', err);
-      }
-    }, 120);
   };
 
   const handleScreenshotSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -288,12 +297,22 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                 {/* QR Display */}
                 <div className="flex flex-col items-center justify-center space-y-3 p-4 rounded-2xl bg-[#FFFCF5] border border-[#E8E2D9]">
                   {upiQrDataUrl ? (
-                    <div className="p-3 bg-white rounded-2xl border border-[#E8E2D9] shadow-xs">
-                      <img
-                        src={upiQrDataUrl}
-                        alt="Pre-Diwali UPI Payment QR"
-                        className="w-48 h-48 rounded-lg"
-                      />
+                    <div className="flex flex-col items-center gap-2">
+                      <div className="p-3 bg-white rounded-2xl border border-[#E8E2D9] shadow-xs">
+                        <img
+                          src={upiQrDataUrl}
+                          alt="Pre-Diwali UPI Payment QR"
+                          className="w-48 h-48 rounded-lg"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={downloadQrCode}
+                        className="py-1.5 px-3 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold text-xs flex items-center gap-1.5 cursor-pointer transition-colors shadow-2xs"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        <span>Download QR (Scan from Gallery)</span>
+                      </button>
                     </div>
                   ) : (
                     <div className="w-48 h-48 bg-[#FFF0D9] rounded-2xl flex items-center justify-center">
@@ -330,7 +349,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                   <div className="w-full space-y-2">
                     <button
                       type="button"
-                      onClick={() => handleTriggerUpi()}
+                      onClick={() => handleTriggerUpi('any')}
                       className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-[#6D28D9] via-[#8B5CF6] to-[#E99A20] hover:from-[#5B21B6] hover:to-[#D97706] text-white font-black text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer text-center group"
                     >
                       <Zap className="w-4 h-4 fill-current text-amber-300 animate-pulse group-hover:scale-110 transition-transform" />
@@ -340,37 +359,40 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                     <div className="grid grid-cols-3 gap-2 w-full pt-0.5">
                       <button
                         type="button"
-                        onClick={() => handleTriggerUpi('phonepe://pay')}
-                        className="py-2 px-2 rounded-xl bg-[#5f259f]/10 hover:bg-[#5f259f]/20 border border-[#5f259f]/30 text-[#5f259f] font-bold text-xs flex items-center justify-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                        onClick={() => handleTriggerUpi('phonepe')}
+                        className="py-2.5 px-2 rounded-xl bg-[#5f259f]/10 hover:bg-[#5f259f]/20 border border-[#5f259f]/30 text-[#5f259f] font-bold text-xs flex items-center justify-center gap-1 cursor-pointer transition-colors shadow-2xs"
                       >
                         <span>PhonePe</span>
                       </button>
                       <button
                         type="button"
-                        onClick={() => handleTriggerUpi('tez://upi/pay')}
-                        className="py-2 px-2 rounded-xl bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 font-bold text-xs flex items-center justify-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                        onClick={() => handleTriggerUpi('gpay')}
+                        className="py-2.5 px-2 rounded-xl bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 font-bold text-xs flex items-center justify-center gap-1 cursor-pointer transition-colors shadow-2xs"
                       >
                         <span>GPay</span>
                       </button>
                       <button
                         type="button"
-                        onClick={() => handleTriggerUpi('paytmmp://pay')}
-                        className="py-2 px-2 rounded-xl bg-sky-50 hover:bg-sky-100 border border-sky-200 text-sky-700 font-bold text-xs flex items-center justify-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                        onClick={() => handleTriggerUpi('paytm')}
+                        className="py-2.5 px-2 rounded-xl bg-sky-50 hover:bg-sky-100 border border-sky-200 text-sky-700 font-bold text-xs flex items-center justify-center gap-1 cursor-pointer transition-colors shadow-2xs"
                       >
                         <span>Paytm</span>
                       </button>
                     </div>
 
                     {/* Clear Payment Guidance */}
-                    <div className="bg-amber-50/90 border border-amber-300 rounded-xl p-2.5 text-left text-xs space-y-1 mt-2 shadow-2xs">
+                    <div className="bg-amber-50/90 border border-amber-300 rounded-xl p-2.5 text-left text-xs space-y-1.5 mt-2 shadow-2xs">
                       <p className="font-bold text-amber-900 flex items-center gap-1">
-                        <span>ℹ️ Payment Instructions:</span>
+                        <span>ℹ️ Helpful Payment Instructions:</span>
                       </p>
                       <p className="text-amber-800 text-[11px] leading-relaxed">
-                        • <strong>Google Pay:</strong> Tap the <strong>"Next"</strong> button at the bottom of the screen to choose your bank account and complete <strong>"Pay ₹{amountRupees}"</strong>.
+                        • <strong>PhonePe / Paytm:</strong> Opens directly with 1-tap <strong>"Proceed to Pay"</strong>.
                       </p>
                       <p className="text-amber-800 text-[11px] leading-relaxed">
-                        • <strong>PhonePe / Paytm:</strong> Opens directly with the 1-tap <strong>"Proceed to Pay"</strong> screen.
+                        • <strong>Google Pay:</strong> Tap the <strong>"Next"</strong> button at bottom to choose your bank and complete <strong>"Pay ₹{amountRupees}"</strong>.
+                      </p>
+                      <p className="text-amber-800 text-[11px] leading-relaxed">
+                        • <strong>If GPay gets stuck loading:</strong> Use <strong>PhonePe</strong>, or click <strong>Download QR</strong> above and scan from your app gallery.
                       </p>
                     </div>
                   </div>
