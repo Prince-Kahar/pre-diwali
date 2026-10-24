@@ -34,6 +34,7 @@ import {
   FileText,
   RotateCcw,
   Copy,
+  X,
 } from 'lucide-react';
 import {
   EventSettings,
@@ -1363,7 +1364,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
 
               {/* Filters */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3">
                 <div className="relative">
                   <Search className="w-4 h-4 text-[#6B655D] absolute left-3 top-3" />
                   <input
@@ -1374,8 +1375,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       setSearchTerm(e.target.value);
                       setCurrentPage(1);
                     }}
-                    className="w-full pl-9 pr-3 py-2 rounded-xl bg-[#FFFCF5] border border-[#E8E2D9] text-xs text-[#29243A] placeholder-[#6B655D]/60 focus:outline-none focus:border-[#6D28D9]"
+                    className="w-full pl-9 pr-8 py-2 rounded-xl bg-[#FFFCF5] border border-[#E8E2D9] text-xs text-[#29243A] placeholder-[#6B655D]/60 focus:outline-none focus:border-[#6D28D9]"
                   />
+                  {searchTerm && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearchTerm('');
+                        setCurrentPage(1);
+                      }}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 rounded-full hover:bg-[#E8E2D9] text-[#6B655D] cursor-pointer"
+                      title="Clear search"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </div>
 
                 <select
@@ -1421,6 +1435,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <option value="PENDING">PENDING</option>
                   <option value="REJECTED">REJECTED</option>
                 </select>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchTerm('');
+                    setYearFilter('ALL');
+                    setFoodFilter('ALL');
+                    setPaymentFilter('ALL');
+                    setEntryFilter('ALL');
+                    setCurrentPage(1);
+                  }}
+                  className="px-3.5 py-2 rounded-xl bg-[#FFF0D9] hover:bg-[#FFE6C2] text-[#6D28D9] border border-[#E8E2D9] text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-2xs whitespace-nowrap hover:shadow-xs"
+                  title="Clear all filters and search"
+                >
+                  <RotateCcw className="w-3.5 h-3.5 text-[#E99A20]" />
+                  <span>Clear All</span>
+                </button>
               </div>
 
               {/* Responsive Table with Horizontal Scroll */}
@@ -1861,15 +1892,40 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </button>
                 </div>
 
-                <div className="relative min-w-[240px]">
-                  <Search className="w-4 h-4 text-[#6B655D] absolute left-3 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="text"
-                    value={paymentSearchTerm}
-                    onChange={(e) => setPaymentSearchTerm(e.target.value)}
-                    placeholder="Search roll, student, UTR..."
-                    className="w-full pl-9 pr-3 py-2 rounded-xl bg-[#FFFCF5] border border-[#E8E2D9] text-xs text-[#29243A] placeholder-[#6B655D]/60 focus:outline-none focus:border-[#6D28D9]"
-                  />
+                <div className="flex items-center gap-2">
+                  <div className="relative min-w-[240px] flex-1 sm:flex-initial">
+                    <Search className="w-4 h-4 text-[#6B655D] absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      value={paymentSearchTerm}
+                      onChange={(e) => setPaymentSearchTerm(e.target.value)}
+                      placeholder="Search roll, student, UTR..."
+                      className="w-full pl-9 pr-8 py-2 rounded-xl bg-[#FFFCF5] border border-[#E8E2D9] text-xs text-[#29243A] placeholder-[#6B655D]/60 focus:outline-none focus:border-[#6D28D9]"
+                    />
+                    {paymentSearchTerm && (
+                      <button
+                        type="button"
+                        onClick={() => setPaymentSearchTerm('')}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 rounded-full hover:bg-[#E8E2D9] text-[#6B655D] cursor-pointer"
+                        title="Clear search text"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPaymentSearchTerm('');
+                      setPaymentStatusFilter('ALL');
+                    }}
+                    className="px-3.5 py-2 rounded-xl bg-[#FFF0D9] hover:bg-[#FFE6C2] text-[#6D28D9] border border-[#E8E2D9] text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap shadow-2xs hover:shadow-xs"
+                    title="Clear all search text and reset status filter to All"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5 text-[#E99A20]" />
+                    <span>Clear All</span>
+                  </button>
                 </div>
               </div>
 
