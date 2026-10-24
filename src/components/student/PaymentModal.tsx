@@ -13,6 +13,7 @@ import {
   Trash2,
   Zap,
   Download,
+  X,
 } from 'lucide-react';
 import { EventSettings, Registration, PaymentRecord } from '../../types';
 import { formatINR } from '../../lib/crypto';
@@ -115,34 +116,17 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
     setTimeout(() => setCopiedUpi(false), 2500);
   };
 
-  const handleTriggerUpi = (appType?: 'phonepe' | 'gpay' | 'paytm' | 'any') => {
-    let targetUrl = upiIntent;
-
-    if (appType === 'phonepe') {
-      targetUrl = upiIntent.replace(/^upi:\/\/pay\?/, 'phonepe://pay?');
-    } else if (appType === 'paytm') {
-      targetUrl = upiIntent.replace(/^upi:\/\/pay\?/, 'paytmmp://pay?');
-    } else if (appType === 'gpay') {
-      const isAndroid = /Android/i.test(navigator.userAgent);
-      if (isAndroid) {
-        // Modern native Android intent for Google Pay (avoids broken legacy tez:// scheme)
-        const queryParams = upiIntent.replace(/^upi:\/\/pay\?/, '');
-        targetUrl = `intent://pay?${queryParams}#Intent;scheme=upi;package=com.google.android.apps.nbu.paisa.user;end`;
-      } else {
-        targetUrl = upiIntent;
-      }
-    }
-
-    // Trigger ONCE using single click dispatch (prevents double intent collision that freezes GPay)
+  const handleTriggerUpi = () => {
+    // Universal standard NPCI UPI URI - natively opens system chooser for ALL UPI apps
     try {
       const link = document.createElement('a');
-      link.href = targetUrl;
+      link.href = upiIntent;
       link.rel = 'noreferrer noopener';
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
     } catch {
-      window.location.href = targetUrl;
+      window.location.href = upiIntent;
     }
   };
 
@@ -208,44 +192,52 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs overflow-y-auto">
-      <div className="bg-white border border-[#E8E2D9] rounded-3xl p-6 sm:p-8 max-w-xl w-full shadow-2xl relative my-8">
-        {/* Header */}
-        <div className="text-center space-y-1 mb-6">
-          <div className="flex justify-center mb-2">
-            <div className="w-14 h-14 rounded-2xl bg-white border border-[#E8E2D9] p-1.5 shadow-xs flex items-center justify-center">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 md:p-6 bg-black/75 backdrop-blur-sm overflow-y-auto">
+      <div className="bg-white border border-[#E8E2D9] rounded-2xl sm:rounded-3xl p-4 sm:p-6 lg:p-8 max-w-lg lg:max-w-5xl w-full shadow-2xl relative my-auto max-h-[96vh] overflow-y-auto">
+        {/* Header with Close Button */}
+        <div className="flex items-center justify-between pb-4 border-b border-[#E8E2D9] mb-5 gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-2xl bg-white border border-[#E8E2D9] p-1 shadow-xs flex items-center justify-center shrink-0">
               <img
                 src={collegeLogo}
                 alt={`${event.college_name} Logo`}
                 className="w-full h-full object-contain"
               />
             </div>
+            <div>
+              <span className="text-[10px] uppercase tracking-widest text-[#E99A20] font-black block">
+                {event.college_name} • Pre-Diwali 2026
+              </span>
+              <h2 className="text-lg sm:text-xl font-black text-[#29243A]">
+                Registration Payment Portal
+              </h2>
+            </div>
           </div>
-          <span className="text-[11px] uppercase tracking-widest text-[#E99A20] font-bold block">
-            {event.college_name} • Secure Payment Portal
-          </span>
-          <h2 className="text-2xl font-black text-[#29243A]">
-            Pre-Diwali Registration Payment
-          </h2>
-          <p className="text-xs text-[#6B655D]">
-            Student: <span className="text-[#29243A] font-bold">{registration.full_name}</span> | Roll:{' '}
-            <span className="text-[#6D28D9] font-mono font-bold">
-              {registration.normalized_roll_number}
-            </span>
-          </p>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-600 hover:text-black transition-colors cursor-pointer shrink-0"
+            title="Close"
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
-        {/* Amount Badge */}
-        <div className="flex items-center justify-between p-4 rounded-2xl bg-[#FFF0D9] border border-[#E99A20]/40 mb-6">
+        {/* Student & Fee Summary Banner */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 sm:p-4 rounded-2xl bg-[#FFF0D9] border border-[#E99A20]/40 mb-5 gap-2">
           <div>
-            <span className="text-xs text-[#6B655D] font-medium block">Registration Fee</span>
+            <span className="text-xs text-[#6B655D] font-medium block">
+              Student: <strong className="text-[#29243A]">{registration.full_name}</strong> | Roll:{' '}
+              <strong className="text-[#6D28D9] font-mono">{registration.normalized_roll_number}</strong>
+            </span>
             <span className="text-xl sm:text-2xl font-black text-[#6D28D9]">
               {formatINR(feeMinor, registration.currency)}
             </span>
           </div>
-          <div className="text-right text-xs text-[#29243A]">
-            <span className="block font-bold">{registration.food_preference} Dinner Included</span>
-            <span className="text-[#B45309] font-mono text-[11px]">Authoritative Snapshot</span>
+          <div className="text-left sm:text-right text-xs">
+            <span className="inline-block px-2.5 py-1 rounded-lg bg-amber-200/60 text-[#B45309] font-bold">
+              🍽️ {registration.food_preference} Dinner Included
+            </span>
           </div>
         </div>
 
@@ -293,24 +285,24 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                 </button>
               </div>
             ) : (
-              <>
-                {/* QR Display */}
-                <div className="flex flex-col items-center justify-center space-y-3 p-4 rounded-2xl bg-[#FFFCF5] border border-[#E8E2D9]">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                {/* Left Column: QR Code & Pay Now Button (lg:col-span-6) */}
+                <div className="lg:col-span-6 flex flex-col items-center justify-center space-y-4 p-4 sm:p-5 rounded-2xl bg-[#FFFCF5] border border-[#E8E2D9]">
                   {upiQrDataUrl ? (
-                    <div className="flex flex-col items-center gap-2">
+                    <div className="flex flex-col items-center gap-2.5 w-full">
                       <div className="p-3 bg-white rounded-2xl border border-[#E8E2D9] shadow-xs">
                         <img
                           src={upiQrDataUrl}
                           alt="Pre-Diwali UPI Payment QR"
-                          className="w-48 h-48 rounded-lg"
+                          className="w-48 h-48 sm:w-52 sm:h-52 rounded-lg"
                         />
                       </div>
                       <button
                         type="button"
                         onClick={downloadQrCode}
-                        className="py-1.5 px-3 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold text-xs flex items-center gap-1.5 cursor-pointer transition-colors shadow-2xs"
+                        className="py-2 px-3.5 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-950 font-bold text-xs flex items-center gap-1.5 cursor-pointer transition-colors shadow-2xs"
                       >
-                        <Download className="w-3.5 h-3.5" />
+                        <Download className="w-3.5 h-3.5 text-amber-800" />
                         <span>Download QR (Scan from Gallery)</span>
                       </button>
                     </div>
@@ -320,14 +312,14 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                     </div>
                   )}
 
-                  <div className="text-center space-y-1">
+                  <div className="text-center space-y-1 w-full">
                     <p className="text-xs text-[#29243A] font-bold">
-                      Scan with any UPI App (GPay, PhonePe, Paytm, BHIM)
+                      Scan or Click Pay Now with Any UPI App
                     </p>
                     <div className="flex items-center justify-center gap-2 text-xs">
                       <span className="text-[#6B655D]">UPI ID:</span>
-                      <span className="font-mono text-[#6D28D9] font-bold">
-                        {event.payment_upi_id}
+                      <span className="font-mono text-[#6D28D9] font-bold select-all">
+                        {cleanUpiId}
                       </span>
                       <button
                         type="button"
@@ -340,180 +332,177 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                     </div>
                     {copiedUpi && (
                       <span className="text-[10px] text-[#15803D] font-bold block">
-                        UPI ID copied to clipboard!
+                        ✓ UPI ID copied to clipboard!
                       </span>
                     )}
                   </div>
 
-                  {/* PROMINENT PAY NOW BUTTON FOR STUDENTS */}
-                  <div className="w-full space-y-2">
-                    <button
-                      type="button"
-                      onClick={() => handleTriggerUpi('any')}
-                      className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-[#6D28D9] via-[#8B5CF6] to-[#E99A20] hover:from-[#5B21B6] hover:to-[#D97706] text-white font-black text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer text-center group"
+                  {/* PROMINENT PAY NOW BUTTON FOR ALL UPI APPS */}
+                  <div className="w-full space-y-2.5 pt-1">
+                    <a
+                      href={upiIntent}
+                      onClick={handleTriggerUpi}
+                      className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-[#6D28D9] via-[#8B5CF6] to-[#E99A20] hover:from-[#5B21B6] hover:to-[#D97706] text-white font-black text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer text-center group active:scale-[0.99]"
                     >
                       <Zap className="w-4 h-4 fill-current text-amber-300 animate-pulse group-hover:scale-110 transition-transform" />
                       <span>⚡ Pay Now (Open Any UPI App)</span>
-                    </button>
+                    </a>
 
-                    <div className="grid grid-cols-3 gap-2 w-full pt-0.5">
-                      <button
-                        type="button"
-                        onClick={() => handleTriggerUpi('phonepe')}
-                        className="py-2.5 px-2 rounded-xl bg-[#5f259f]/10 hover:bg-[#5f259f]/20 border border-[#5f259f]/30 text-[#5f259f] font-bold text-xs flex items-center justify-center gap-1 cursor-pointer transition-colors shadow-2xs"
-                      >
-                        <span>PhonePe</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleTriggerUpi('gpay')}
-                        className="py-2.5 px-2 rounded-xl bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 font-bold text-xs flex items-center justify-center gap-1 cursor-pointer transition-colors shadow-2xs"
-                      >
-                        <span>GPay</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleTriggerUpi('paytm')}
-                        className="py-2.5 px-2 rounded-xl bg-sky-50 hover:bg-sky-100 border border-sky-200 text-sky-700 font-bold text-xs flex items-center justify-center gap-1 cursor-pointer transition-colors shadow-2xs"
-                      >
-                        <span>Paytm</span>
-                      </button>
+                    {/* Supported Apps Badges */}
+                    <div className="p-2.5 rounded-xl bg-purple-50/70 border border-purple-200/60 text-center">
+                      <p className="text-[10px] font-bold text-[#6D28D9] uppercase tracking-wider mb-1">
+                        Supported on 25+ UPI Apps
+                      </p>
+                      <p className="text-[10px] text-[#4C1D95] font-medium leading-relaxed">
+                        PhonePe • Google Pay • Paytm • BHIM • Amazon Pay • CRED • WhatsApp Pay • super.money • Navi • Groww • Jupiter • Fi • SBI YONO • iMobile • PayZapp • Axis Pay & all UPI apps
+                      </p>
                     </div>
 
-                    {/* Clear Payment Guidance */}
-                    <div className="bg-amber-50/90 border border-amber-300 rounded-xl p-2.5 text-left text-xs space-y-1.5 mt-2 shadow-2xs">
-                      <p className="font-bold text-amber-900 flex items-center gap-1">
-                        <span>ℹ️ Helpful Payment Instructions:</span>
+                    {/* Helpful Payment Instructions */}
+                    <div className="bg-amber-50/90 border border-amber-300 rounded-xl p-2.5 text-left text-xs space-y-1 shadow-2xs">
+                      <p className="font-bold text-amber-900 flex items-center gap-1 text-[11px]">
+                        <span>ℹ️ Quick Payment Tips:</span>
                       </p>
-                      <p className="text-amber-800 text-[11px] leading-relaxed">
-                        • <strong>PhonePe / Paytm:</strong> Opens directly with 1-tap <strong>"Proceed to Pay"</strong>.
+                      <p className="text-amber-800 text-[10px] leading-relaxed">
+                        • <strong>Mobile:</strong> Tap <strong>"Pay Now"</strong> above to choose any UPI app installed on your phone.
                       </p>
-                      <p className="text-amber-800 text-[11px] leading-relaxed">
-                        • <strong>Google Pay:</strong> Tap the <strong>"Next"</strong> button at bottom to choose your bank and complete <strong>"Pay ₹{amountRupees}"</strong>.
+                      <p className="text-amber-800 text-[10px] leading-relaxed">
+                        • <strong>Laptop/Desktop:</strong> Open your favorite UPI app and scan the QR code above.
                       </p>
-                      <p className="text-amber-800 text-[11px] leading-relaxed">
-                        • <strong>If GPay gets stuck loading:</strong> Use <strong>PhonePe</strong>, or click <strong>Download QR</strong> above and scan from your app gallery.
+                      <p className="text-amber-800 text-[10px] leading-relaxed">
+                        • <strong>After Payment:</strong> Enter your 12-digit UTR/Ref ID and attach the payment screenshot on the right.
                       </p>
                     </div>
                   </div>
                 </div>
 
-                {/* Submit Claim Form */}
-                <form onSubmit={handleManualClaimSubmit} className="space-y-4">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-[#29243A] block">
-                      Enter UPI Reference / UTR / Transaction ID
-                    </label>
-                    <div className="relative">
-                      <input
-                        type="text"
-                        maxLength={25}
-                        placeholder="e.g. 12-digit UTR (123456789012)"
-                        value={transactionRef}
-                        onChange={(e) => {
-                          const val = e.target.value.replace(/[^a-zA-Z0-9]/g, '').slice(0, 25);
-                          setTransactionRef(val);
-                          if (errorMsg) setErrorMsg(null);
-                        }}
-                        className="w-full px-4 py-3 rounded-xl bg-[#FFFCF5] border border-[#E8E2D9] text-[#29243A] placeholder-[#6B655D]/60 focus:outline-none focus:border-[#6D28D9] focus:ring-1 focus:ring-[#6D28D9] text-sm font-mono font-medium"
-                      />
+                {/* Right Column: Claim & Compulsory Screenshot (lg:col-span-6) */}
+                <div className="lg:col-span-6 flex flex-col justify-between space-y-4 p-4 sm:p-5 rounded-2xl bg-[#FFFCF5] border border-[#E8E2D9]">
+                  <form onSubmit={handleManualClaimSubmit} className="space-y-4">
+                    <div className="pb-2 border-b border-[#E8E2D9]">
+                      <h3 className="text-xs font-bold text-[#6D28D9] uppercase tracking-wider">
+                        Step 2: Submit Payment Proof
+                      </h3>
+                      <p className="text-[11px] text-[#6B655D] mt-0.5">
+                        Upload your payment screenshot to verify registration
+                      </p>
                     </div>
-                    <div className="flex justify-between items-center text-[11px] text-[#6B655D]">
-                      <span>Enter the reference number from your UPI app receipt if available.</span>
-                    </div>
-                  </div>
 
-                  {/* COMPULSORY Payment Screenshot Upload */}
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <label className="text-xs font-bold text-[#29243A] flex items-center gap-1.5">
-                        <ImageIcon className="w-4 h-4 text-[#6D28D9]" />
-                        <span>Payment Screenshot</span>
-                        <span className="text-[#B91C1C] font-bold text-[11px]">(*)</span>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-[#29243A] block">
+                        UPI Reference / UTR / Transaction ID
                       </label>
-                      {screenshotPreview && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setScreenshotFile(null);
-                            setScreenshotPreview(null);
+                      <div className="relative">
+                        <input
+                          type="text"
+                          maxLength={25}
+                          placeholder="e.g. 12-digit UTR (123456789012)"
+                          value={transactionRef}
+                          onChange={(e) => {
+                            const val = e.target.value.replace(/[^a-zA-Z0-9]/g, '').slice(0, 25);
+                            setTransactionRef(val);
+                            if (errorMsg) setErrorMsg(null);
                           }}
-                          className="text-[11px] text-[#B91C1C] hover:underline flex items-center gap-1 cursor-pointer"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                          <span>Remove</span>
-                        </button>
+                          className="w-full px-4 py-3 rounded-xl bg-white border border-[#E8E2D9] text-[#29243A] placeholder-[#6B655D]/60 focus:outline-none focus:border-[#6D28D9] focus:ring-1 focus:ring-[#6D28D9] text-sm font-mono font-medium"
+                        />
+                      </div>
+                      <div className="flex justify-between items-center text-[10px] text-[#6B655D]">
+                        <span>Found in your UPI app receipt or SMS</span>
+                      </div>
+                    </div>
+
+                    {/* COMPULSORY Payment Screenshot Upload */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold text-[#29243A] flex items-center gap-1.5">
+                          <ImageIcon className="w-4 h-4 text-[#6D28D9]" />
+                          <span>Payment Screenshot</span>
+                          <span className="text-[#B91C1C] font-bold text-[11px]">(Compulsory *)</span>
+                        </label>
+                        {screenshotPreview && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setScreenshotFile(null);
+                              setScreenshotPreview(null);
+                            }}
+                            className="text-[11px] text-[#B91C1C] hover:underline flex items-center gap-1 cursor-pointer"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            <span>Remove</span>
+                          </button>
+                        )}
+                      </div>
+
+                      {screenshotPreview ? (
+                        <div className="p-3 rounded-2xl bg-[#FFF0D9]/50 border border-[#E99A20]/40 flex items-center gap-3">
+                          <img
+                            src={screenshotPreview}
+                            alt="Uploaded payment screenshot"
+                            className="w-16 h-16 object-cover rounded-xl border border-[#E8E2D9] shadow-xs"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-bold text-[#29243A] truncate">
+                              {screenshotFile ? screenshotFile.name : 'Attached Screenshot'}
+                            </p>
+                            <p className="text-[10px] text-[#15803D] font-semibold flex items-center gap-1 mt-0.5">
+                              <CheckCircle2 className="w-3 h-3" />
+                              <span>Screenshot attached & ready</span>
+                            </p>
+                            <label className="text-[11px] text-[#6D28D9] font-bold hover:underline cursor-pointer inline-block mt-1">
+                              <span>Change Image</span>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                onChange={handleScreenshotSelect}
+                                className="hidden"
+                              />
+                            </label>
+                          </div>
+                        </div>
+                      ) : (
+                        <label className="border-2 border-dashed border-[#E8E2D9] hover:border-[#6D28D9] rounded-2xl p-4 flex flex-col items-center justify-center gap-2 cursor-pointer bg-white hover:bg-[#FFF0D9]/30 transition-colors">
+                          <div className="w-10 h-10 rounded-full bg-[#FFF0D9] text-[#6D28D9] flex items-center justify-center">
+                            <UploadCloud className="w-5 h-5 text-[#6D28D9]" />
+                          </div>
+                          <div className="text-center">
+                            <span className="text-xs font-bold text-[#6D28D9]">
+                              Click to upload payment screenshot
+                            </span>
+                            <p className="text-[10px] text-[#6B655D] mt-0.5">
+                              JPG, PNG, WebP up to 5MB (Screenshot from GPay, PhonePe, Paytm, etc.)
+                            </p>
+                          </div>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handleScreenshotSelect}
+                            className="hidden"
+                          />
+                        </label>
                       )}
                     </div>
 
-                    {screenshotPreview ? (
-                      <div className="p-3 rounded-2xl bg-[#FFF0D9]/50 border border-[#E99A20]/40 flex items-center gap-3">
-                        <img
-                          src={screenshotPreview}
-                          alt="Uploaded payment screenshot"
-                          className="w-16 h-16 object-cover rounded-xl border border-[#E8E2D9] shadow-xs"
-                        />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-bold text-[#29243A] truncate">
-                            {screenshotFile ? screenshotFile.name : 'Attached Screenshot'}
-                          </p>
-                          <p className="text-[10px] text-[#15803D] font-semibold flex items-center gap-1 mt-0.5">
-                            <CheckCircle2 className="w-3 h-3" />
-                            <span>Screenshot attached & ready</span>
-                          </p>
-                          <label className="text-[11px] text-[#6D28D9] font-bold hover:underline cursor-pointer inline-block mt-1">
-                            <span>Change Image</span>
-                            <input
-                              type="file"
-                              accept="image/*"
-                              onChange={handleScreenshotSelect}
-                              className="hidden"
-                            />
-                          </label>
-                        </div>
-                      </div>
-                    ) : (
-                      <label className="border-2 border-dashed border-[#E8E2D9] hover:border-[#6D28D9] rounded-2xl p-4 flex flex-col items-center justify-center gap-2 cursor-pointer bg-[#FFFCF5] hover:bg-[#FFF0D9]/30 transition-colors">
-                        <div className="w-10 h-10 rounded-full bg-[#FFF0D9] text-[#6D28D9] flex items-center justify-center">
-                          <UploadCloud className="w-5 h-5 text-[#6D28D9]" />
-                        </div>
-                        <div className="text-center">
-                          <span className="text-xs font-bold text-[#6D28D9]">
-                            Click to upload payment screenshot
-                          </span>
-                          <p className="text-[11px] text-[#6B655D] mt-0.5">
-                            JPG, PNG, WebP up to 5MB (Screenshot from GPay, PhonePe, Paytm, etc.)
-                          </p>
-                        </div>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={handleScreenshotSelect}
-                          className="hidden"
-                        />
-                      </label>
-                    )}
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="w-full py-3.5 rounded-xl bg-[#6D28D9] hover:bg-[#5B21B6] text-white font-bold text-sm shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-                  >
-                    {isSubmitting ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        <span>Submitting Reference...</span>
-                      </>
-                    ) : (
-                      <>
-                        <CheckCircle2 className="w-4 h-4" />
-                        <span>Submit UPI Claim & Screenshot</span>
-                      </>
-                    )}
-                  </button>
-                </form>
-              </>
+                    <button
+                      type="submit"
+                      disabled={isSubmitting}
+                      className="w-full py-3.5 rounded-xl bg-[#6D28D9] hover:bg-[#5B21B6] text-white font-bold text-sm shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                    >
+                      {isSubmitting ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <span>Submitting Reference...</span>
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span>Submit UPI Claim & Screenshot</span>
+                        </>
+                      )}
+                    </button>
+                  </form>
+                </div>
+              </div>
             )}
           </div>
 
