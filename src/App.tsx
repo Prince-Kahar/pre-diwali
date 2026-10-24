@@ -93,10 +93,13 @@ export function App() {
     setEventSettings(dataService.getEventSettings());
   }, []);
 
-  const openStudentPassOrPayment = (reg: Registration) => {
+  const openStudentPassOrPayment = async (reg: Registration) => {
     setCurrentRegistration(reg);
     if (reg.payment_status === 'PAID') {
-      const pass = dataService.getEntryPassByRegistration(reg.id);
+      let pass = dataService.getEntryPassByRegistration(reg.id);
+      if (!pass) {
+        pass = await dataService.issueEntryPass(reg.id);
+      }
       if (pass) {
         setCurrentPass(pass);
         setStudentStep('PASS');
@@ -171,16 +174,23 @@ export function App() {
     setShowPaymentModal(true);
   };
 
-  // Handle Payment Confirmed
-  const handlePaymentSuccess = () => {
+  // Handle Payment Confirmed - instantly generate and display QR pass with 0 delay
+  const handlePaymentSuccess = async () => {
     if (!currentRegistration) return;
     setShowPaymentModal(false);
 
     // Refresh registration and pass
-    const updatedReg = dataService.getRegistrationById(currentRegistration.id);
+    let updatedReg = dataService.getRegistrationById(currentRegistration.id);
+    if (!updatedReg) {
+      await dataService.initSupabase();
+      updatedReg = dataService.getRegistrationById(currentRegistration.id);
+    }
     if (updatedReg) setCurrentRegistration(updatedReg);
 
-    const pass = dataService.getEntryPassByRegistration(currentRegistration.id);
+    let pass = dataService.getEntryPassByRegistration(currentRegistration.id);
+    if (!pass) {
+      pass = await dataService.issueEntryPass(currentRegistration.id);
+    }
     if (pass) {
       setCurrentPass(pass);
       setStudentStep('PASS');

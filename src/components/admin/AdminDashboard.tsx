@@ -206,10 +206,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     refreshAll();
     syncAndRefresh();
 
-    // 10-second automatic polling interval to guarantee instant updates from students
+    // 1-second automatic polling interval to guarantee instant updates from students
     const pollInterval = setInterval(() => {
       syncAndRefresh();
-    }, 10000);
+    }, 1000);
 
     // Real-time Postgres changes subscription from Supabase
     const unsubscribe = dataService.subscribeToRealtimeChanges(() => {
@@ -927,7 +927,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   return (
     <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 min-h-[82vh] w-full max-w-full min-w-0 bg-[#FFFCF5]">
       {/* ----------------- MOBILE NAVIGATION BAR (< lg) ----------------- */}
-      <div className="lg:hidden bg-white border border-[#E8E2D9] rounded-3xl p-4 shadow-xs space-y-3">
+      <div className="lg:hidden bg-white border border-[#E8E2D9] rounded-2xl sm:rounded-3xl p-3 sm:p-4 shadow-xs space-y-3">
         <div className="flex items-center justify-between pb-2 border-b border-[#E8E2D9]">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-xl bg-white border border-[#E8E2D9] p-0.5 shadow-xs flex items-center justify-center shrink-0">
@@ -965,7 +965,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
 
         {/* Horizontal scrollable tab buttons on mobile */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none touch-pan-x" style={{ WebkitOverflowScrolling: 'touch' }}>
           {[
             { id: 'OVERVIEW', label: 'Overview', icon: Layers },
             { id: 'REGISTRATIONS', label: `Registrations (${registrations.length})`, icon: Users },
@@ -1923,8 +1923,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </button>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <div className="relative min-w-[240px] flex-1 sm:flex-initial">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
+                  <div className="relative min-w-[200px] sm:min-w-[240px] flex-1 sm:flex-initial">
                     <Search className="w-4 h-4 text-[#6B655D] absolute left-3 top-1/2 -translate-y-1/2" />
                     <input
                       type="text"
@@ -1994,8 +1994,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </p>
                 </div>
               ) : (
-                <div className="overflow-x-auto rounded-2xl border border-[#E8E2D9]">
-                  <table className="w-full text-left text-xs text-[#29243A]">
+                <div className="overflow-x-auto rounded-2xl border border-[#E8E2D9] scrollbar-thin scrollbar-thumb-amber-300 scrollbar-track-[#FFF0D9]/30" style={{ WebkitOverflowScrolling: 'touch' }}>
+                  <table className="w-full min-w-[760px] text-left text-xs text-[#29243A]">
                     <thead className="bg-[#FFF0D9] text-[#29243A] font-bold border-b border-[#E8E2D9]">
                       <tr>
                         <th className="p-3.5">Student</th>
@@ -2419,8 +2419,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </span>
               </div>
 
-              <div className="overflow-x-auto rounded-2xl border border-[#E8E2D9]">
-                <table className="w-full text-left text-xs text-[#29243A]">
+              <div className="overflow-x-auto rounded-2xl border border-[#E8E2D9] scrollbar-thin" style={{ WebkitOverflowScrolling: 'touch' }}>
+                <table className="w-full min-w-[650px] text-left text-xs text-[#29243A]">
                   <thead className="bg-[#FFF0D9] text-[#29243A] font-bold border-b border-[#E8E2D9]">
                     <tr>
                       <th className="p-3.5">Timestamp</th>
@@ -2593,8 +2593,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </p>
               </div>
 
-              <div className="overflow-x-auto rounded-2xl border border-[#E8E2D9]">
-                <table className="w-full text-left text-xs text-[#29243A]">
+              <div className="overflow-x-auto rounded-2xl border border-[#E8E2D9] scrollbar-thin" style={{ WebkitOverflowScrolling: 'touch' }}>
+                <table className="w-full min-w-[700px] text-left text-xs text-[#29243A]">
                   <thead className="bg-[#FFF0D9] text-[#29243A] font-bold border-b border-[#E8E2D9]">
                     <tr>
                       <th className="p-3.5">Student</th>
@@ -2721,8 +2721,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </form>
 
               {/* Staff Table */}
-              <div className="overflow-x-auto rounded-2xl border border-[#E8E2D9]">
-                <table className="w-full text-left text-xs text-[#29243A]">
+              <div className="overflow-x-auto rounded-2xl border border-[#E8E2D9] scrollbar-thin" style={{ WebkitOverflowScrolling: 'touch' }}>
+                <table className="w-full min-w-[600px] text-left text-xs text-[#29243A]">
                   <thead className="bg-[#FFF0D9] text-[#29243A] font-bold border-b border-[#E8E2D9]">
                     <tr>
                       <th className="p-3.5">Display Name</th>
@@ -2782,8 +2782,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </p>
               </div>
 
-              <div className="overflow-x-auto rounded-2xl border border-[#E8E2D9]">
-                <table className="w-full text-left text-xs text-[#29243A]">
+              <div className="overflow-x-auto rounded-2xl border border-[#E8E2D9] scrollbar-thin" style={{ WebkitOverflowScrolling: 'touch' }}>
+                <table className="w-full min-w-[650px] text-left text-xs text-[#29243A]">
                   <thead className="bg-[#FFF0D9] text-[#29243A] font-bold border-b border-[#E8E2D9]">
                     <tr>
                       <th className="p-3.5">Timestamp</th>
@@ -2892,8 +2892,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </p>
               </div>
 
-              <div className="overflow-x-auto rounded-2xl border border-[#E8E2D9]">
-                <table className="w-full text-left text-xs text-[#29243A]">
+              <div className="overflow-x-auto rounded-2xl border border-[#E8E2D9] scrollbar-thin" style={{ WebkitOverflowScrolling: 'touch' }}>
+                <table className="w-full min-w-[700px] text-left text-xs text-[#29243A]">
                   <thead className="bg-[#FFF0D9] text-[#29243A] font-bold border-b border-[#E8E2D9]">
                     <tr>
                       <th className="p-3.5">Timestamp</th>

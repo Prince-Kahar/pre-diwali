@@ -11,6 +11,7 @@ import {
   UploadCloud,
   ImageIcon,
   Trash2,
+  Zap,
 } from 'lucide-react';
 import { EventSettings, Registration, PaymentRecord } from '../../types';
 import { formatINR } from '../../lib/crypto';
@@ -74,6 +75,28 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
       }
     }
   }, [registration.id, upiIntent]);
+
+  // 1-second instant auto-detection: as soon as payment is approved, immediately open QR Pass
+  useEffect(() => {
+    const checkApproval = async () => {
+      try {
+        let reg = dataService.getRegistrationById(registration.id);
+        if (!reg || reg.payment_status !== 'PAID') {
+          await dataService.initSupabase();
+          reg = dataService.getRegistrationById(registration.id);
+        }
+        if (reg && reg.payment_status === 'PAID') {
+          await dataService.issueEntryPass(reg.id);
+          onPaymentSuccess();
+        }
+      } catch (err) {
+        console.warn('Auto approval check error:', err);
+      }
+    };
+
+    const intervalId = setInterval(checkApproval, 1000);
+    return () => clearInterval(intervalId);
+  }, [registration.id, onPaymentSuccess]);
 
   const copyUpiId = () => {
     navigator.clipboard.writeText(event.payment_upi_id);
@@ -269,6 +292,15 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                       </span>
                     )}
                   </div>
+
+                  {/* PROMINENT PAY NOW BUTTON FOR STUDENTS */}
+                  <a
+                    href={upiIntent}
+                    className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-[#6D28D9] via-[#8B5CF6] to-[#E99A20] hover:from-[#5B21B6] hover:to-[#D97706] text-white font-black text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer text-center group"
+                  >
+                    <Zap className="w-4 h-4 fill-current text-amber-300 animate-pulse group-hover:scale-110 transition-transform" />
+                    <span>⚡ Pay Now (Open GPay / PhonePe / Paytm)</span>
+                  </a>
                 </div>
 
                 {/* Submit Claim Form */}
