@@ -42,9 +42,27 @@ export const registrationSchema = z.object({
   full_name: z
     .string()
     .trim()
-    .min(2, 'Full name must be at least 2 characters')
+    .min(3, 'Full name must be at least 3 characters')
     .max(80, 'Full name cannot exceed 80 characters')
-    .regex(/^[a-zA-Z\s.'-]+$/, 'Full name must contain only letters, spaces, and valid punctuation'),
+    .regex(/^[a-zA-Z\s.'-]+$/, 'Full name must contain only letters, spaces, and valid punctuation')
+    .refine((val) => {
+      const words = val.trim().split(/\s+/).filter(Boolean);
+      return words.length >= 2;
+    }, {
+      message: 'Please enter your complete full name (First Name and Last Name)',
+    })
+    .refine((val) => {
+      const lower = val.toLowerCase().trim();
+      const forbidden = ['test', 'fake', 'dummy', 'demo', 'asdf', 'qwerty', 'admin', 'student', 'none', 'null', 'temp', 'sample'];
+      return !forbidden.some((word) => lower === word || lower.includes(` ${word} `) || lower.startsWith(`${word} `) || lower.endsWith(` ${word}`));
+    }, {
+      message: 'Please enter a genuine student full name',
+    })
+    .refine((val) => {
+      return !/(.)\1{4,}/i.test(val);
+    }, {
+      message: 'Invalid name format. Please enter your real name.',
+    }),
   
   academic_year: z.enum([
     'FY - M.Sc.IT',
@@ -62,14 +80,44 @@ export const registrationSchema = z.object({
   contact_number: z
     .string()
     .trim()
-    .regex(INDIAN_PHONE_REGEX, 'Please enter a valid 10-digit Indian mobile number (e.g. 9876543210)'),
+    .regex(INDIAN_PHONE_REGEX, 'Please enter a valid 10-digit Indian mobile number (e.g. 9876543210)')
+    .refine((val) => {
+      const digits = val.replace(/\D/g, '');
+      const clean = digits.length > 10 ? digits.slice(-10) : digits;
+      // Reject all-identical numbers like 9999999999, 8888888888, 0000000000
+      if (/^(\d)\1{9}$/.test(clean)) return false;
+      // Reject obvious dummy sequences
+      if (clean === '9876543210' || clean === '0123456789' || clean === '1234567890') return false;
+      return true;
+    }, {
+      message: 'Please enter a genuine, valid 10-digit mobile number',
+    }),
 
   roll_number: z
     .string()
     .trim()
-    .min(2, 'Roll number must be at least 2 characters')
-    .max(30, 'Roll number cannot exceed 30 characters')
-    .regex(/^[a-zA-Z0-9/_ -]+$/, 'Roll number must be alphanumeric (letters, numbers, underscores, hyphens or slashes)'),
+    .min(1, 'Roll number is required')
+    .max(15, 'Roll number cannot exceed 15 characters')
+    .regex(/^[a-zA-Z0-9/_ -]+$/, 'Roll number must be alphanumeric (letters, numbers, hyphens or slashes)')
+    .refine((val) => {
+      // Must contain at least one digit (roll numbers cannot be pure letters like 'asdf' or 'fake')
+      return /\d/.test(val);
+    }, {
+      message: 'Roll number must contain student roll digits (e.g. 2021 or 101)',
+    })
+    .refine((val) => {
+      const lower = val.toLowerCase().trim();
+      const forbidden = ['test', 'fake', 'dummy', 'demo', 'asdf', 'none', 'null', 'admin', 'sample', 'temp', '0000', '000', '00', '0'];
+      return !forbidden.includes(lower);
+    }, {
+      message: 'Please enter your genuine college roll number',
+    })
+    .refine((val) => {
+      const digits = val.replace(/\D/g, '');
+      return parseInt(digits, 10) > 0;
+    }, {
+      message: 'Roll number must be greater than 0',
+    }),
 
   consent_agreed: z
     .boolean()
@@ -85,7 +133,7 @@ export const registrationSchema = z.object({
 
   identity_photo_url: z
     .string()
-    .optional(),
+    .min(10, 'Student identity photo is compulsory to prevent fake registrations'),
 });
 
 export const manualPaymentClaimSchema = z.object({

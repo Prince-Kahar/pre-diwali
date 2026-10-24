@@ -739,6 +739,15 @@ class PreDiwaliDataStore {
 
     // 4. Create Immutable Registration Snapshot
     const cleanPhone = normalizeContactNumber(parsed.contact_number);
+
+    // Prevent duplicate phone spam: 1 student registration per mobile number
+    const existingPhone = this.registrations.find(
+      (r) => r.event_id === this.event.id && r.contact_number === cleanPhone && r.normalized_roll_number !== normalizedRoll
+    );
+    if (existingPhone) {
+      throw new Error(`Mobile number ${cleanPhone} is already registered with student "${existingPhone.full_name}" (Roll: ${existingPhone.normalized_roll_number}). Each student must use their own unique mobile number.`);
+    }
+
     const regId = generateUUID();
 
     const newReg: Registration = {
@@ -754,7 +763,7 @@ class PreDiwaliDataStore {
       expected_amount_minor_units: this.event.registration_fee_minor_units,
       currency: this.event.currency,
       performance_talent: input.performance_talent,
-      identity_photo_url: input.identity_photo_url,
+      identity_photo_url: parsed.identity_photo_url,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
@@ -1256,9 +1265,14 @@ class PreDiwaliDataStore {
 
   public async issueEntryPass(registrationId: string): Promise<EntryPass> {
     const reg = this.getRegistrationById(registrationId);
-    if (!reg) throw new Error('Registration not found');
+    if (!reg) {
+      throw new Error('Registration record not found. Entry pass cannot be generated.');
+    }
+    if (!reg.normalized_roll_number) {
+      throw new Error('Invalid registration: Missing roll number.');
+    }
     if (reg.payment_status !== 'PAID') {
-      throw new Error('Cannot issue entry pass for unpaid registration');
+      throw new Error(`Cannot issue entry pass: Student ${reg.full_name} (Roll: ${reg.normalized_roll_number}) has not completed verified payment.`);
     }
 
     // Check if pass already exists (VALID or USED) - strict one-time pass guarantee

@@ -138,7 +138,7 @@ export function App() {
     }
 
     if (matches.length === 0) {
-      alert(`No registration found for Roll Number "${roll}". Please check your roll number or register.`);
+      alert(`No verified registration found for Roll Number "${roll}". Only officially registered students can access or generate an entry pass.`);
       return;
     }
 
@@ -174,12 +174,12 @@ export function App() {
     setShowPaymentModal(true);
   };
 
-  // Handle Payment Confirmed - instantly generate and display QR pass with 0 delay
+  // Handle Payment Confirmed - strictly only generate and display QR pass when status is PAID
   const handlePaymentSuccess = async () => {
     if (!currentRegistration) return;
     setShowPaymentModal(false);
 
-    // Refresh registration and pass
+    // Refresh registration from database
     let updatedReg = dataService.getRegistrationById(currentRegistration.id);
     if (!updatedReg) {
       await dataService.initSupabase();
@@ -187,14 +187,21 @@ export function App() {
     }
     if (updatedReg) setCurrentRegistration(updatedReg);
 
-    let pass = dataService.getEntryPassByRegistration(currentRegistration.id);
-    if (!pass) {
-      pass = await dataService.issueEntryPass(currentRegistration.id);
+    // Strict Rule: Only officially registered and PAID students can have an Entry Pass
+    if (updatedReg && updatedReg.payment_status === 'PAID') {
+      let pass = dataService.getEntryPassByRegistration(updatedReg.id);
+      if (!pass) {
+        pass = await dataService.issueEntryPass(updatedReg.id);
+      }
+      if (pass) {
+        setCurrentPass(pass);
+        setStudentStep('PASS');
+        return;
+      }
     }
-    if (pass) {
-      setCurrentPass(pass);
-      setStudentStep('PASS');
-    }
+
+    alert('Payment details submitted! Your official Entry Pass will be generated as soon as your payment is verified and approved by the college administration.');
+    setStudentStep('LANDING');
   };
 
   return (
