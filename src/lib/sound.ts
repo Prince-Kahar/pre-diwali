@@ -55,10 +55,6 @@ class SoundFeedback {
 
       osc.start(now);
       osc.stop(now + 0.085);
-
-      if (typeof navigator !== 'undefined' && navigator.vibrate) {
-        navigator.vibrate(60);
-      }
     } catch (err) {
       console.warn('Scan beep playback failed:', err);
     }
@@ -96,10 +92,6 @@ class SoundFeedback {
       gain2.connect(this.ctx.destination);
       osc2.start(now + 0.09);
       osc2.stop(now + 0.3);
-
-      if (typeof navigator !== 'undefined' && navigator.vibrate) {
-        navigator.vibrate([80, 50, 120]);
-      }
     } catch (err) {
       console.warn('Success chime playback failed:', err);
     }
@@ -137,10 +129,6 @@ class SoundFeedback {
       gain2.connect(this.ctx.destination);
       osc2.start(now + 0.16);
       osc2.stop(now + 0.34);
-
-      if (typeof navigator !== 'undefined' && navigator.vibrate) {
-        navigator.vibrate([200, 80, 250]);
-      }
     } catch (err) {
       console.warn('Error buzz playback failed:', err);
     }

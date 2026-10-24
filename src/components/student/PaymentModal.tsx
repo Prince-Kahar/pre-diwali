@@ -104,6 +104,39 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
     setTimeout(() => setCopiedUpi(false), 2500);
   };
 
+  const handleTriggerUpi = (customScheme?: string) => {
+    let targetUrl = upiIntent;
+    if (customScheme) {
+      if (customScheme === 'phonepe://pay') {
+        targetUrl = upiIntent.replace(/^upi:\/\/pay\?/, 'phonepe://pay?');
+      } else if (customScheme === 'tez://upi/pay') {
+        targetUrl = upiIntent.replace(/^upi:\/\/pay\?/, 'tez://upi/pay?');
+      } else if (customScheme === 'paytmmp://pay') {
+        targetUrl = upiIntent.replace(/^upi:\/\/pay\?/, 'paytmmp://pay?');
+      }
+    }
+
+    try {
+      window.location.href = targetUrl;
+    } catch (e) {
+      console.warn('Direct location assign failed:', e);
+    }
+
+    // Secondary fallback for Chrome Android PWA
+    setTimeout(() => {
+      try {
+        const link = document.createElement('a');
+        link.href = targetUrl;
+        link.rel = 'noreferrer noopener';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } catch (err) {
+        console.warn('Fallback link click notice:', err);
+      }
+    }, 120);
+  };
+
   const handleScreenshotSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
@@ -294,13 +327,40 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                   </div>
 
                   {/* PROMINENT PAY NOW BUTTON FOR STUDENTS */}
-                  <a
-                    href={upiIntent}
-                    className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-[#6D28D9] via-[#8B5CF6] to-[#E99A20] hover:from-[#5B21B6] hover:to-[#D97706] text-white font-black text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer text-center group"
-                  >
-                    <Zap className="w-4 h-4 fill-current text-amber-300 animate-pulse group-hover:scale-110 transition-transform" />
-                    <span>⚡ Pay Now (Open GPay / PhonePe / Paytm)</span>
-                  </a>
+                  <div className="w-full space-y-2">
+                    <button
+                      type="button"
+                      onClick={() => handleTriggerUpi()}
+                      className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-[#6D28D9] via-[#8B5CF6] to-[#E99A20] hover:from-[#5B21B6] hover:to-[#D97706] text-white font-black text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer text-center group"
+                    >
+                      <Zap className="w-4 h-4 fill-current text-amber-300 animate-pulse group-hover:scale-110 transition-transform" />
+                      <span>⚡ Pay Now (Open Any UPI App)</span>
+                    </button>
+
+                    <div className="grid grid-cols-3 gap-2 w-full pt-0.5">
+                      <button
+                        type="button"
+                        onClick={() => handleTriggerUpi('phonepe://pay')}
+                        className="py-2 px-2 rounded-xl bg-[#5f259f]/10 hover:bg-[#5f259f]/20 border border-[#5f259f]/30 text-[#5f259f] font-bold text-xs flex items-center justify-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                      >
+                        <span>PhonePe</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleTriggerUpi('tez://upi/pay')}
+                        className="py-2 px-2 rounded-xl bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 font-bold text-xs flex items-center justify-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                      >
+                        <span>GPay</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleTriggerUpi('paytmmp://pay')}
+                        className="py-2 px-2 rounded-xl bg-sky-50 hover:bg-sky-100 border border-sky-200 text-sky-700 font-bold text-xs flex items-center justify-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                      >
+                        <span>Paytm</span>
+                      </button>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Submit Claim Form */}

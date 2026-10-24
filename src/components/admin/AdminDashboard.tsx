@@ -186,19 +186,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const syncAndRefresh = async () => {
     setIsRefreshing(true);
     try {
-      const res = await dataService.initSupabase();
+      await dataService.initSupabase();
       refreshAll();
-      if (res && res.success) {
-        setSyncFeedback(`Real-time Supabase sync successful: ${res.registrationsCount} registrations, ${res.paymentsCount} payments verified live.`);
-      } else {
-        setSyncFeedback('Data refreshed from local & cloud store.');
-      }
     } catch {
       refreshAll();
-      setSyncFeedback('Data refreshed.');
     } finally {
       setIsRefreshing(false);
-      setTimeout(() => setSyncFeedback(null), 4000);
     }
   };
 
@@ -1213,22 +1206,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       {/* ----------------- IVORY WORKSPACE ----------------- */}
       <section className="flex-1 min-w-0 max-w-full space-y-5 lg:space-y-6 overflow-hidden">
-        {/* Real-time Sync Status Notification */}
-        {syncFeedback && (
-          <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs font-bold flex items-center justify-between shadow-xs transition-all">
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-              <span>{syncFeedback}</span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setSyncFeedback(null)}
-              className="text-emerald-700 hover:text-emerald-900 text-xs ml-2 cursor-pointer font-bold"
-            >
-              Dismiss
-            </button>
-          </div>
-        )}
         {/* 1. OVERVIEW TAB */}
         {activeTab === 'OVERVIEW' && (
           <div className="space-y-6">
@@ -1521,18 +1498,149 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 )}
               </div>
 
-              {/* Mobile swipe helper indicator */}
-              <div className="lg:hidden flex items-center justify-between text-[11px] text-[#6B655D] px-1">
-                <span className="flex items-center gap-1 font-medium text-[#6D28D9]">
-                  <span>← Swipe table horizontally to see all columns →</span>
-                </span>
-                <span className="font-bold text-[#29243A]">
-                  Page {currentPage} of {totalPages}
-                </span>
+              {/* ----------------- MOBILE CARD VIEW (< md) ----------------- */}
+              <div className="md:hidden space-y-3">
+                {paginatedRegistrations.length === 0 ? (
+                  <div className="p-8 text-center rounded-2xl bg-[#FFFCF5] border border-[#E8E2D9] text-[#6B655D] text-xs">
+                    No registrations match the selected filters.
+                  </div>
+                ) : (
+                  paginatedRegistrations.map((reg) => (
+                    <div
+                      key={reg.id}
+                      className="p-3.5 rounded-2xl bg-white border border-[#E8E2D9] shadow-xs space-y-3"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          {reg.identity_photo_url ? (
+                            <img
+                              src={reg.identity_photo_url}
+                              alt={reg.full_name}
+                              onClick={() =>
+                                setViewingStudentPhoto({
+                                  url: reg.identity_photo_url!,
+                                  name: reg.full_name,
+                                  roll: reg.normalized_roll_number,
+                                })
+                              }
+                              className="w-11 h-11 rounded-xl object-cover border border-[#E8E2D9] shadow-xs shrink-0 cursor-pointer"
+                            />
+                          ) : (
+                            <div className="w-11 h-11 rounded-xl bg-[#FFF0D9] border border-[#E8E2D9] flex items-center justify-center text-[#E99A20] text-sm font-bold shrink-0">
+                              {reg.full_name.charAt(0).toUpperCase()}
+                            </div>
+                          )}
+                          <div className="min-w-0">
+                            <h3 className="font-bold text-xs sm:text-sm text-[#29243A] truncate">{reg.full_name}</h3>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-mono text-[11px] font-bold text-[#6D28D9] bg-purple-50 px-1.5 py-0.5 rounded-md border border-purple-200">
+                                {reg.normalized_roll_number}
+                              </span>
+                              <span className="text-[10px] text-[#6B655D]">{reg.academic_year}</span>
+                            </div>
+                          </div>
+                        </div>
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
+                            reg.payment_status === 'PAID'
+                              ? 'bg-emerald-50 text-[#15803D] border border-emerald-200'
+                              : reg.payment_status === 'PENDING'
+                              ? 'bg-amber-50 text-[#B45309] border border-amber-200'
+                              : 'bg-rose-50 text-[#B91C1C] border border-rose-200'
+                          }`}
+                        >
+                          {reg.payment_status}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 text-xs bg-[#FFFCF5] p-2.5 rounded-xl border border-[#E8E2D9]/70">
+                        <div>
+                          <span className="text-[10px] text-[#6B655D] block">Meal</span>
+                          <span className="font-bold text-[#29243A] text-xs">{reg.food_preference} Dinner</span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-[#6B655D] block">Phone</span>
+                          <span className="font-mono text-[#29243A] text-xs">{reg.contact_number}</span>
+                        </div>
+                        <div className="col-span-2 flex items-center justify-between pt-1 border-t border-[#E8E2D9]/60">
+                          <div>
+                            <span className="text-[10px] text-[#6B655D] block">Gate Scan</span>
+                            {reg.pass?.redeemed_at || reg.pass?.status === 'USED' ? (
+                              <span className="text-emerald-700 font-bold text-[11px]">✓ Checked In</span>
+                            ) : (
+                              <span className="text-amber-700 font-medium text-[11px]">⏳ Not Scanned</span>
+                            )}
+                          </div>
+                          <div className="text-right">
+                            <span className="text-[10px] text-[#6B655D] block">Dinner Scan</span>
+                            {reg.pass?.dinner_redeemed_at ? (
+                              <span className="text-emerald-700 font-bold text-[11px]">✓ Claimed</span>
+                            ) : (
+                              <span className="text-[#6B655D] text-[11px]">Not Claimed</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedReg(reg)}
+                          className="flex-1 py-1 px-2 rounded-lg bg-[#FFFCF5] hover:bg-[#FFF0D9] text-[#29243A] border border-[#E8E2D9] text-[11px] font-bold cursor-pointer text-center"
+                        >
+                          Details
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleStartEditReg(reg)}
+                          className="flex-1 py-1 px-2 rounded-lg bg-[#FFF0D9] hover:bg-[#FFE6C2] text-[#6D28D9] border border-[#E8E2D9] text-[11px] font-bold cursor-pointer text-center"
+                        >
+                          Edit
+                        </button>
+                        {reg.pass?.status === 'USED' && (
+                          <button
+                            type="button"
+                            onClick={() => handleReactivatePass(reg.pass!.id, reg.full_name)}
+                            className="py-1 px-2 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-[#15803D] border border-emerald-200 text-[11px] font-bold cursor-pointer"
+                          >
+                            Re-use QR
+                          </button>
+                        )}
+                        {reg.pass?.status === 'VALID' && !reg.pass?.redeemed_at && (
+                          <button
+                            type="button"
+                            onClick={() => handleMarkGateDone(reg.pass!.id, reg.full_name)}
+                            className="py-1 px-2 rounded-lg bg-purple-50 hover:bg-purple-100 text-[#6D28D9] border border-purple-200 text-[11px] font-bold cursor-pointer"
+                          >
+                            Mark Gate
+                          </button>
+                        )}
+                        {reg.pass && (reg.pass.redeemed_at || reg.pass.status === 'USED') && !reg.pass.dinner_redeemed_at && (
+                          <button
+                            type="button"
+                            onClick={() => handleMarkDinnerDone(reg.pass!.id, reg.full_name)}
+                            className="py-1 px-2 rounded-lg bg-amber-50 hover:bg-amber-100 text-[#B45309] border border-amber-200 text-[11px] font-bold cursor-pointer"
+                          >
+                            Mark Dinner
+                          </button>
+                        )}
+                        {reg.pass?.dinner_redeemed_at && (
+                          <button
+                            type="button"
+                            onClick={() => handleResetDinnerScan(reg.pass!.id, reg.full_name)}
+                            className="py-1 px-2 rounded-lg bg-amber-50 hover:bg-amber-100 text-[#B45309] border border-amber-200 text-[11px] font-bold cursor-pointer"
+                          >
+                            Reset Dinner
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
 
-              {/* Responsive Table */}
-              <div className="overflow-x-auto w-full max-w-full rounded-xl sm:rounded-2xl border border-[#E8E2D9] shadow-2xs scrollbar-thin scrollbar-thumb-amber-300 scrollbar-track-[#FFF0D9]/30">
+              {/* ----------------- DESKTOP / TABLET RESPONSIVE TABLE (hidden md:block) ----------------- */}
+              <div className="hidden md:block overflow-x-auto w-full max-w-full rounded-xl sm:rounded-2xl border border-[#E8E2D9] shadow-2xs scrollbar-thin scrollbar-thumb-amber-300 scrollbar-track-[#FFF0D9]/30">
                 <table className="w-full min-w-[820px] lg:min-w-0 text-left text-xs text-[#29243A] border-collapse">
                   <thead className="bg-[#FFF0D9] text-[#29243A] font-bold border-b border-[#E8E2D9]">
                     <tr>
