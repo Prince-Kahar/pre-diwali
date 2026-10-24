@@ -334,6 +334,36 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
+  // Mark Gate Entry QR as Done (Admin Manual Override)
+  const handleMarkGateDone = async (passId: string, studentName?: string) => {
+    const confirmed = window.confirm(
+      `Mark Gate Entry QR as DONE for ${studentName || 'this student'}?`
+    );
+    if (!confirmed) return;
+    try {
+      await dataService.markGateEntryDoneAdmin(passId, adminUser.id);
+      refreshAll();
+      alert('Gate Entry QR marked as DONE successfully!');
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to mark gate entry done');
+    }
+  };
+
+  // Mark Dinner QR Scan as Done (Admin Manual Override)
+  const handleMarkDinnerDone = async (passId: string, studentName?: string) => {
+    const confirmed = window.confirm(
+      `Mark Dinner QR Scan as DONE for ${studentName || 'this student'}?`
+    );
+    if (!confirmed) return;
+    try {
+      await dataService.markDinnerScanDoneAdmin(passId, adminUser.id);
+      refreshAll();
+      alert('Dinner QR Scan marked as DONE successfully!');
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to mark dinner scan done');
+    }
+  };
+
   // Edit Student Registration Modal Handlers
   const handleStartEditReg = (reg: Registration & { payment?: PaymentRecord; pass?: EntryPass }) => {
     setEditingReg(reg);
@@ -1437,16 +1467,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <th className="p-3.5">Course / Year</th>
                       <th className="p-3.5">Food</th>
                       <th className="p-3.5">Stage Talent</th>
-                      <th className="p-3.5">Timestamps (Reg / Appr / Gate / Dinner)</th>
+                      <th className="p-3.5">Reg & Appr</th>
+                      <th className="p-3.5 bg-emerald-50/50 text-[#15803D]">Gate Entry QR</th>
+                      <th className="p-3.5 bg-amber-50/50 text-[#B45309]">Dinner QR Scan</th>
                       <th className="p-3.5">Payment</th>
-                      <th className="p-3.5">Entry Pass</th>
+                      <th className="p-3.5">Pass Status</th>
                       <th className="p-3.5 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#E8E2D9] bg-white">
                     {paginatedRegistrations.length === 0 ? (
                       <tr>
-                        <td colSpan={9} className="p-8 text-center text-[#6B655D]">
+                        <td colSpan={11} className="p-8 text-center text-[#6B655D]">
                           No registrations match the selected filters.
                         </td>
                       </tr>
@@ -1503,11 +1535,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           </td>
                           <td className="p-3.5 text-[10px] space-y-0.5 whitespace-nowrap">
                             <div className="flex items-center gap-1.5 text-[#29243A]">
-                              <span className="font-bold text-[#6B655D] w-11">Reg:</span>
+                              <span className="font-bold text-[#6B655D] w-9">Reg:</span>
                               <span>{formatKolkataDateTime(reg.created_at)}</span>
                             </div>
                             <div className="flex items-center gap-1.5">
-                              <span className="font-bold text-[#6B655D] w-11">Appr:</span>
+                              <span className="font-bold text-[#6B655D] w-9">Appr:</span>
                               <span
                                 className={
                                   reg.payment?.verified_at
@@ -1524,38 +1556,100 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   : 'Pending'}
                               </span>
                             </div>
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-bold text-[#6B655D] w-11">Gate:</span>
-                              <span
-                                className={
-                                  reg.pass?.redeemed_at
-                                    ? 'text-[#15803D] font-bold'
-                                    : reg.pass?.status === 'USED'
-                                    ? 'text-[#B45309] font-bold'
-                                    : 'text-[#6B655D]'
-                                }
-                              >
-                                {reg.pass?.redeemed_at
-                                  ? formatKolkataDateTime(reg.pass.redeemed_at)
-                                  : reg.pass?.status === 'USED'
-                                  ? 'Scanned'
-                                  : 'Not scanned'}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-bold text-[#6B655D] w-11">Dinner:</span>
-                              <span
-                                className={
-                                  reg.pass?.dinner_redeemed_at
-                                    ? 'text-[#E99A20] font-bold'
-                                    : 'text-[#6B655D]'
-                                }
-                              >
-                                {reg.pass?.dinner_redeemed_at
-                                  ? formatKolkataDateTime(reg.pass.dinner_redeemed_at)
-                                  : 'Not claimed'}
-                              </span>
-                            </div>
+                          </td>
+
+                          {/* 1. Gate Entry QR Checkpoint */}
+                          <td className="p-3.5 whitespace-nowrap">
+                            {reg.pass ? (
+                              reg.pass.redeemed_at || reg.pass.status === 'USED' ? (
+                                <div className="space-y-1">
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-[#15803D] border border-emerald-200 font-bold text-[10px]">
+                                    <CheckCircle2 className="w-3 h-3 text-[#15803D]" /> Gate Entry Done
+                                  </span>
+                                  <div className="text-[10px] text-[#6B655D]">
+                                    {reg.pass.redeemed_at ? formatKolkataDateTime(reg.pass.redeemed_at) : 'Scanned'}
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleReactivatePass(reg.pass!.id, reg.full_name)}
+                                    className="px-2 py-0.5 rounded bg-emerald-100 hover:bg-emerald-200 text-[#15803D] text-[9px] font-bold inline-flex items-center gap-0.5 cursor-pointer shadow-2xs"
+                                    title="Reset gate entry so student can scan again at entrance"
+                                  >
+                                    <RotateCcw className="w-2.5 h-2.5" /> Re-use QR
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="space-y-1">
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-[#6B655D] border border-slate-200 font-medium text-[10px]">
+                                    ○ Not Scanned
+                                  </span>
+                                  {reg.pass.status === 'VALID' && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleMarkGateDone(reg.pass!.id, reg.full_name)}
+                                      className="px-2 py-0.5 rounded bg-[#FFF0D9] hover:bg-[#FFE6C2] text-[#6D28D9] border border-[#E8E2D9] text-[9px] font-bold block cursor-pointer shadow-2xs"
+                                      title="Manually mark Gate Entry QR as Done"
+                                    >
+                                      ✓ Mark Gate Done
+                                    </button>
+                                  )}
+                                </div>
+                              )
+                            ) : (
+                              <span className="text-[#6B655D] text-[10px]">No Pass</span>
+                            )}
+                          </td>
+
+                          {/* 2. Dinner QR Scan Checkpoint */}
+                          <td className="p-3.5 whitespace-nowrap">
+                            {reg.pass ? (
+                              reg.pass.dinner_redeemed_at ? (
+                                <div className="space-y-1">
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 text-[#B45309] border border-amber-200 font-bold text-[10px]">
+                                    <Utensils className="w-3 h-3 text-[#E99A20]" /> Dinner Done ({reg.food_preference})
+                                  </span>
+                                  <div className="text-[10px] text-[#6B655D]">
+                                    {formatKolkataDateTime(reg.pass.dinner_redeemed_at)}
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleResetDinnerScan(reg.pass!.id, reg.full_name)}
+                                    className="px-2 py-0.5 rounded bg-amber-100 hover:bg-amber-200 text-[#B45309] text-[9px] font-bold inline-flex items-center gap-0.5 cursor-pointer shadow-2xs"
+                                    title="Reset dinner scan coupon so student can claim meal"
+                                  >
+                                    <RotateCcw className="w-2.5 h-2.5" /> Reset Dinner
+                                  </button>
+                                </div>
+                              ) : reg.pass.redeemed_at || reg.pass.status === 'USED' ? (
+                                <div className="space-y-1">
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-50 text-[#6D28D9] border border-purple-200 font-medium text-[10px]">
+                                    Ready for Dinner
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleMarkDinnerDone(reg.pass!.id, reg.full_name)}
+                                    className="px-2 py-0.5 rounded bg-[#FFF0D9] hover:bg-[#FFE6C2] text-[#6D28D9] border border-[#E8E2D9] text-[9px] font-bold block cursor-pointer shadow-2xs"
+                                    title="Manually mark Dinner QR Scan as Done"
+                                  >
+                                    ✓ Mark Dinner Done
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="space-y-0.5">
+                                  <span
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-50 text-[#B91C1C] border border-rose-200 font-medium text-[10px]"
+                                    title="Gate Entry QR must be scanned first before dinner coupon can be redeemed"
+                                  >
+                                    🔒 Gate Entry Required
+                                  </span>
+                                  <div className="text-[9px] text-[#6B655D]/70 italic">
+                                    Scan gate first
+                                  </div>
+                                </div>
+                              )
+                            ) : (
+                              <span className="text-[#6B655D] text-[10px]">No Pass</span>
+                            )}
                           </td>
                           <td className="p-3.5 whitespace-nowrap">
                             <span
@@ -3177,6 +3271,34 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
                   <span>Re-use Gate QR</span>
+                </button>
+              )}
+
+              {selectedReg.pass?.status === 'VALID' && !selectedReg.pass?.redeemed_at && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleMarkGateDone(selectedReg.pass!.id, selectedReg.full_name);
+                    setSelectedReg(null);
+                  }}
+                  className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-1 cursor-pointer shadow-xs"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>Mark Gate Done</span>
+                </button>
+              )}
+
+              {selectedReg.pass && (selectedReg.pass.redeemed_at || selectedReg.pass.status === 'USED') && !selectedReg.pass.dinner_redeemed_at && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleMarkDinnerDone(selectedReg.pass!.id, selectedReg.full_name);
+                    setSelectedReg(null);
+                  }}
+                  className="px-3 py-2 rounded-xl bg-[#E99A20] hover:bg-[#D98A10] text-white font-bold text-xs flex items-center justify-center gap-1 cursor-pointer shadow-xs"
+                >
+                  <Utensils className="w-3.5 h-3.5" />
+                  <span>Mark Dinner Done</span>
                 </button>
               )}
 

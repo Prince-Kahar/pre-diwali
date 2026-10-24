@@ -1348,6 +1348,81 @@ class PreDiwaliDataStore {
     return pass;
   }
 
+  // Admin mark gate entry scan done
+  public async markGateEntryDoneAdmin(passId: string, adminId: string): Promise<EntryPass> {
+    const admin = this.profiles.find((p) => p.id === adminId && p.role === 'ADMIN');
+    if (!admin) throw new Error('Unauthorized');
+
+    const pass = this.passes.find((p) => p.id === passId);
+    if (!pass) throw new Error('Pass not found');
+
+    const now = new Date().toISOString();
+    pass.status = 'USED';
+    pass.redeemed_at = now;
+    pass.redeemed_by = adminId;
+    pass.redeemed_by_name = admin.display_name || 'Admin Override';
+
+    this.addAuditLog(adminId, 'MARK_GATE_ENTRY_DONE', 'entry_pass', passId, 'Admin manually marked gate entry as DONE');
+    this.persist();
+
+    if (isSupabaseConfigured && supabase) {
+      try {
+        await supabase
+          .from('entry_passes')
+          .update({
+            status: 'USED',
+            redeemed_at: now,
+            redeemed_by: adminId,
+          })
+          .eq('id', passId);
+      } catch (err) {
+        console.warn('Supabase markGateEntryDoneAdmin sync notice:', err);
+      }
+    }
+
+    return pass;
+  }
+
+  // Admin mark dinner scan done
+  public async markDinnerScanDoneAdmin(passId: string, adminId: string): Promise<EntryPass> {
+    const admin = this.profiles.find((p) => p.id === adminId && p.role === 'ADMIN');
+    if (!admin) throw new Error('Unauthorized');
+
+    const pass = this.passes.find((p) => p.id === passId);
+    if (!pass) throw new Error('Pass not found');
+
+    const now = new Date().toISOString();
+    if (!pass.redeemed_at) {
+      pass.redeemed_at = now;
+      pass.redeemed_by = adminId;
+      pass.redeemed_by_name = admin.display_name;
+      pass.status = 'USED';
+    }
+    pass.dinner_redeemed_at = now;
+    pass.dinner_redeemed_by = adminId;
+    pass.dinner_redeemed_by_name = admin.display_name || 'Admin Override';
+
+    this.addAuditLog(adminId, 'MARK_DINNER_SCAN_DONE', 'entry_pass', passId, 'Admin manually marked dinner scan as DONE');
+    this.persist();
+
+    if (isSupabaseConfigured && supabase) {
+      try {
+        await supabase
+          .from('entry_passes')
+          .update({
+            dinner_redeemed_at: now,
+            redeemed_at: pass.redeemed_at,
+            status: 'USED',
+          })
+          .eq('id', passId);
+      } catch (err) {
+        console.warn('Supabase markDinnerScanDoneAdmin sync notice:', err);
+      }
+    }
+
+    return pass;
+  }
+
   // -------------------------------------------------------------------------
   // STRICT ATOMIC ONE-TIME QR SCAN REDEMPTION (ENTRY GATE & DINNER MODES)
   // -------------------------------------------------------------------------
@@ -1659,6 +1734,39 @@ class PreDiwaliDataStore {
       // MODE 2: DINNER / FOOD SCAN
       // =========================================================================
       if (scanType === 'DINNER') {
+        // STRICT ENFORCEMENT: Gate Entry QR MUST be scanned at main gate first before dinner can be claimed!
+        if (!pass.redeemed_at) {
+          this.scans.unshift({
+            id: `scan-${Date.now()}`,
+            event_id: this.event.id,
+            pass_id: pass.id,
+            scan_type: 'DINNER',
+            staff_user_id: staffUserId,
+            staff_name: staff.display_name,
+            scan_result: 'GATE_ENTRY_NOT_DONE',
+            scanned_at: now,
+            request_id: requestId,
+            reason_code: 'GATE_ENTRY_REQUIRED_FIRST',
+            student_name: reg.full_name,
+            roll_number: reg.normalized_roll_number,
+            food_preference: reg.food_preference,
+          });
+          this.persist();
+
+          return {
+            success: false,
+            status: 'GATE_ENTRY_NOT_DONE',
+            scan_type: 'DINNER',
+            message: 'DINNER DENIED — GATE ENTRY NOT SCANNED! Student must scan QR at Main Gate first.',
+            student_name: reg.full_name,
+            roll_number: reg.normalized_roll_number,
+            academic_year: reg.academic_year,
+            food_preference: reg.food_preference,
+            performance_talent: reg.performance_talent,
+            identity_photo_url: reg.identity_photo_url,
+          };
+        }
+
         // If dinner already claimed
         if (pass.dinner_redeemed_at) {
           const prevDinnerStaff = this.profiles.find((p) => p.id === pass.dinner_redeemed_by);

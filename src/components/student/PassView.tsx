@@ -296,6 +296,84 @@ export const PassView: React.FC<PassViewProps> = ({
           </div>
         </div>
 
+        {/* 2-Step Checkpoint Status (Gate Entry QR + Dinner QR Scan) */}
+        <div className="p-4 rounded-2xl bg-[#FFF0D9]/50 border border-[#E99A20]/40 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-[#6D28D9] uppercase tracking-wider">
+              2-Step QR Verification Checkpoints
+            </span>
+            <span className="text-[10px] text-[#6B655D]">Scan same QR at both stations</span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            {/* Step 1: Main Gate Entry */}
+            <div className={`p-3 rounded-xl border flex items-center justify-between ${
+              pass.redeemed_at || pass.status === 'USED'
+                ? 'bg-emerald-50 border-emerald-200 text-[#15803D]'
+                : 'bg-white border-[#E8E2D9] text-[#29243A]'
+            }`}>
+              <div className="flex items-center gap-2">
+                <div className={`w-6 h-6 rounded-lg flex items-center justify-center font-bold text-xs ${
+                  pass.redeemed_at || pass.status === 'USED'
+                    ? 'bg-emerald-600 text-white'
+                    : 'bg-[#FFF0D9] text-[#E99A20]'
+                }`}>
+                  1
+                </div>
+                <div>
+                  <span className="text-xs font-bold block">1st Scan: Gate Entry</span>
+                  <span className="text-[10px] text-[#6B655D]">Main Entrance admission</span>
+                </div>
+              </div>
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                pass.redeemed_at || pass.status === 'USED'
+                  ? 'bg-emerald-100 text-[#15803D]'
+                  : 'bg-slate-100 text-[#6B655D]'
+              }`}>
+                {pass.redeemed_at || pass.status === 'USED' ? '✓ Admitted' : 'Pending Scan'}
+              </span>
+            </div>
+
+            {/* Step 2: Dinner Food Counter */}
+            <div className={`p-3 rounded-xl border flex items-center justify-between ${
+              pass.dinner_redeemed_at
+                ? 'bg-amber-50 border-amber-200 text-[#B45309]'
+                : (pass.redeemed_at || pass.status === 'USED')
+                ? 'bg-purple-50 border-purple-200 text-[#6D28D9]'
+                : 'bg-slate-50/60 border-slate-200 text-[#6B655D]'
+            }`}>
+              <div className="flex items-center gap-2">
+                <div className={`w-6 h-6 rounded-lg flex items-center justify-center font-bold text-xs ${
+                  pass.dinner_redeemed_at
+                    ? 'bg-[#E99A20] text-white'
+                    : (pass.redeemed_at || pass.status === 'USED')
+                    ? 'bg-[#6D28D9] text-white'
+                    : 'bg-slate-200 text-slate-500'
+                }`}>
+                  2
+                </div>
+                <div>
+                  <span className="text-xs font-bold block">2nd Scan: Dinner Coupon</span>
+                  <span className="text-[10px] text-[#6B655D]">{registration.food_preference} Food Counter</span>
+                </div>
+              </div>
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                pass.dinner_redeemed_at
+                  ? 'bg-amber-100 text-[#B45309]'
+                  : (pass.redeemed_at || pass.status === 'USED')
+                  ? 'bg-purple-100 text-[#6D28D9]'
+                  : 'bg-rose-50 text-[#B91C1C]'
+              }`}>
+                {pass.dinner_redeemed_at
+                  ? '✓ Claimed'
+                  : (pass.redeemed_at || pass.status === 'USED')
+                  ? 'Ready for Dinner'
+                  : '🔒 Scan Gate First'}
+              </span>
+            </div>
+          </div>
+        </div>
+
         {/* Event Logistics & Instructions Banner */}
         <div className="pt-4 border-t border-[#E8E2D9] grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-[#29243A]">
           <div className="flex items-start gap-2">

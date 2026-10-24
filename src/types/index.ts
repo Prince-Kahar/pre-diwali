@@ -31,7 +31,8 @@ export type ScanResultCode =
   | 'ALREADY_CLAIMED_DINNER'
   | 'PAYMENT_NOT_VERIFIED'
   | 'INVALID_PASS'
-  | 'PASS_CANCELLED';
+  | 'PASS_CANCELLED'
+  | 'GATE_ENTRY_NOT_DONE';
 
 export interface EventSettings {
   id: string;

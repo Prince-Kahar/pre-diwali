@@ -527,6 +527,19 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
             </p>
           </div>
 
+          {/* Gate Entry Prerequisite Warning */}
+          {scanResult.status === 'GATE_ENTRY_NOT_DONE' && (
+            <div className="p-4 rounded-2xl bg-amber-100 border-2 border-amber-500 text-amber-950 text-center space-y-1.5 max-w-md mx-auto shadow-xs">
+              <span className="text-xs uppercase font-black tracking-wider block text-amber-900">
+                🛑 1st Scan (Gate Entry) Required First!
+              </span>
+              <p className="text-xs font-semibold leading-relaxed">
+                This student has NOT completed Gate Admission scan at the Main Entrance.
+                Students must scan their QR at the Main Gate first before food can be distributed.
+              </p>
+            </div>
+          )}
+
           {/* Student Selfie / Identity Photo (When Available) */}
           {scanResult.identity_photo_url && (
             <div className="flex flex-col items-center gap-1.5 pt-1">
