@@ -33,6 +33,7 @@ import {
   Edit3,
   FileText,
   RotateCcw,
+  Copy,
 } from 'lucide-react';
 import {
   EventSettings,
@@ -85,6 +86,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [pendingPayments, setPendingPayments] = useState<Array<PaymentRecord & { registration?: Registration }>>(
     dataService.getPendingPaymentsQueue()
   );
+  const [allPayments, setAllPayments] = useState<Array<PaymentRecord & { registration?: Registration }>>(
+    dataService.getAllPaymentsWithRegistrations()
+  );
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState<'ALL' | 'PENDING' | 'PAID' | 'REJECTED'>('PENDING');
+  const [paymentSearchTerm, setPaymentSearchTerm] = useState('');
   const [staffList, setStaffList] = useState<UserProfile[]>(
     dataService.getProfiles().filter((p) => p.role === 'STAFF')
   );
@@ -168,6 +174,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setMetrics(dataService.getDashboardMetrics());
     setRegistrations(dataService.getAllRegistrations());
     setPendingPayments(dataService.getPendingPaymentsQueue());
+    setAllPayments(dataService.getAllPaymentsWithRegistrations());
     setStaffList(dataService.getProfiles().filter((p) => p.role === 'STAFF'));
     setAuditLogs(dataService.getAuditLogs());
     setPricingHistory(dataService.getPricingHistory());
@@ -197,17 +204,30 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     refreshAll();
     syncAndRefresh();
 
+    // 10-second automatic polling interval to guarantee instant updates from students
+    const pollInterval = setInterval(() => {
+      syncAndRefresh();
+    }, 10000);
+
     // Real-time Postgres changes subscription from Supabase
     const unsubscribe = dataService.subscribeToRealtimeChanges(() => {
       refreshAll();
     });
 
     return () => {
+      clearInterval(pollInterval);
       if (unsubscribe) {
         unsubscribe();
       }
     };
   }, []);
+
+  // Proactively sync when switching to Payments or Registrations tabs
+  useEffect(() => {
+    if (activeTab === 'PAYMENTS' || activeTab === 'REGISTRATIONS') {
+      syncAndRefresh();
+    }
+  }, [activeTab]);
 
   // Synchronize pricing form when event prop changes
   useEffect(() => {
@@ -796,6 +816,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
     doc.save(`PreDiwali_Registrations_Report_${Date.now()}.pdf`);
   };
+
+  const pendingPaymentsCount = allPayments.filter((p) => p.status === 'PENDING').length;
+  const paidPaymentsCount = allPayments.filter((p) => p.status === 'PAID').length;
+  const rejectedPaymentsCount = allPayments.filter((p) => p.status === 'REJECTED').length;
+
+  const filteredPayments = allPayments.filter((pay) => {
+    if (paymentStatusFilter !== 'ALL' && pay.status !== paymentStatusFilter) {
+      return false;
+    }
+    if (paymentSearchTerm.trim()) {
+      const q = paymentSearchTerm.toLowerCase();
+      const name = (pay.registration?.full_name || '').toLowerCase();
+      const roll = (pay.registration?.normalized_roll_number || '').toLowerCase();
+      const ref = (pay.transaction_reference || '').toLowerCase();
+      return name.includes(q) || roll.includes(q) || ref.includes(q);
+    }
+    return true;
+  });
 
   return (
     <div className="flex flex-col lg:flex-row gap-6 min-h-[82vh] bg-[#FFFCF5]">
@@ -1646,19 +1684,113 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         {/* ----------------- 3. PAYMENT VERIFICATION TAB ----------------- */}
         {activeTab === 'PAYMENTS' && (
           <div className="space-y-6">
-            <div className="p-6 rounded-3xl bg-white border border-[#E8E2D9] shadow-xs space-y-4">
-              <div>
-                <h2 className="text-xl font-black text-[#29243A]">Manual Payment Verification Queue</h2>
-                <p className="text-xs text-[#6B655D]">
-                  Verify submitted 12-digit UPI reference numbers against college bank records. Verification immediately generates the student QR pass.
-                </p>
+            <div className="p-6 rounded-3xl bg-white border border-[#E8E2D9] shadow-xs space-y-5">
+              {/* Header & Live Cloud Status */}
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-[#E8E2D9]">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs uppercase tracking-widest font-bold text-[#E99A20]">
+                      Finance & Verification
+                    </span>
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 text-[#15803D] border border-emerald-200 text-[10px] font-bold">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#15803D] animate-ping" />
+                      Live Supabase Sync Active
+                    </span>
+                  </div>
+                  <h2 className="text-xl font-black text-[#29243A] mt-1">UPI Payment Verification & History</h2>
+                  <p className="text-xs text-[#6B655D]">
+                    Real-time queue for student UPI claims. When students upload payment screenshots on their phone, they appear here live.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={syncAndRefresh}
+                    disabled={isRefreshing}
+                    className="px-3.5 py-2 rounded-xl bg-[#FFF0D9] hover:bg-[#FFE6C2] text-[#6D28D9] border border-[#E8E2D9] text-xs font-bold transition-all cursor-pointer flex items-center gap-2 shadow-xs disabled:opacity-60"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 text-[#E99A20] ${isRefreshing ? 'animate-spin' : ''}`} />
+                    <span>{isRefreshing ? 'Syncing...' : 'Sync with Supabase'}</span>
+                  </button>
+                </div>
               </div>
 
-              {pendingPayments.length === 0 ? (
+              {/* Status Filter Tabs & Search */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-1.5 p-1 bg-[#FFFCF5] border border-[#E8E2D9] rounded-2xl overflow-x-auto">
+                  <button
+                    type="button"
+                    onClick={() => setPaymentStatusFilter('PENDING')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
+                      paymentStatusFilter === 'PENDING'
+                        ? 'bg-[#E99A20] text-white shadow-xs'
+                        : 'text-[#6B655D] hover:text-[#29243A]'
+                    }`}
+                  >
+                    <Clock className="w-3.5 h-3.5" />
+                    <span>Pending Queue ({pendingPaymentsCount})</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPaymentStatusFilter('PAID')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
+                      paymentStatusFilter === 'PAID'
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'text-[#6B655D] hover:text-[#29243A]'
+                    }`}
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Verified / Paid ({paidPaymentsCount})</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPaymentStatusFilter('REJECTED')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
+                      paymentStatusFilter === 'REJECTED'
+                        ? 'bg-[#B91C1C] text-white shadow-xs'
+                        : 'text-[#6B655D] hover:text-[#29243A]'
+                    }`}
+                  >
+                    <XCircle className="w-3.5 h-3.5" />
+                    <span>Rejected ({rejectedPaymentsCount})</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPaymentStatusFilter('ALL')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                      paymentStatusFilter === 'ALL'
+                        ? 'bg-[#6D28D9] text-white shadow-xs'
+                        : 'text-[#6B655D] hover:text-[#29243A]'
+                    }`}
+                  >
+                    All ({allPayments.length})
+                  </button>
+                </div>
+
+                <div className="relative min-w-[240px]">
+                  <Search className="w-4 h-4 text-[#6B655D] absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={paymentSearchTerm}
+                    onChange={(e) => setPaymentSearchTerm(e.target.value)}
+                    placeholder="Search roll, student, UTR..."
+                    className="w-full pl-9 pr-3 py-2 rounded-xl bg-[#FFFCF5] border border-[#E8E2D9] text-xs text-[#29243A] placeholder-[#6B655D]/60 focus:outline-none focus:border-[#6D28D9]"
+                  />
+                </div>
+              </div>
+
+              {/* Table or Empty State */}
+              {filteredPayments.length === 0 ? (
                 <div className="p-12 text-center rounded-2xl bg-[#FFFCF5] border border-[#E8E2D9] space-y-2">
                   <CheckCircle2 className="w-10 h-10 text-[#15803D] mx-auto" />
-                  <h3 className="text-sm font-bold text-[#29243A]">All Payments Verified</h3>
-                  <p className="text-xs text-[#6B655D]">There are currently no pending UPI payment claims awaiting review.</p>
+                  <h3 className="text-sm font-bold text-[#29243A]">
+                    {paymentStatusFilter === 'PENDING' ? 'No Pending Payments in Queue' : 'No Payments Match Filter'}
+                  </h3>
+                  <p className="text-xs text-[#6B655D]">
+                    {paymentStatusFilter === 'PENDING'
+                      ? 'All submitted student payments have been reviewed and verified.'
+                      : 'Try switching the filter tabs or search terms above.'}
+                  </p>
                 </div>
               ) : (
                 <div className="overflow-x-auto rounded-2xl border border-[#E8E2D9]">
@@ -1670,24 +1802,46 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <th className="p-3.5">Amount Snapshot</th>
                         <th className="p-3.5">UPI Reference (UTR)</th>
                         <th className="p-3.5">Payment Screenshot</th>
+                        <th className="p-3.5">Status</th>
                         <th className="p-3.5">Claimed At</th>
                         <th className="p-3.5 text-right">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#E8E2D9] bg-white">
-                      {pendingPayments.map((pay) => (
+                      {filteredPayments.map((pay) => (
                         <tr key={pay.id} className="hover:bg-[#FFF0D9]/30 transition-colors">
-                          <td className="p-3.5 font-bold text-[#29243A]">
-                            {pay.registration?.full_name || 'Student'}
+                          <td className="p-3.5">
+                            <span className="font-bold text-[#29243A] block">
+                              {pay.registration?.full_name || 'Student'}
+                            </span>
+                            <span className="text-[10px] text-[#6B655D]">
+                              {pay.registration?.contact_number || pay.registration?.academic_year || ''}
+                            </span>
                           </td>
                           <td className="p-3.5 font-mono font-bold text-[#6D28D9]">
-                            {pay.registration?.normalized_roll_number}
+                            {pay.registration?.normalized_roll_number || '—'}
                           </td>
                           <td className="p-3.5 font-black text-[#29243A]">
-                            {formatINR(pay.expected_amount_minor_units, pay.currency)}
+                            {formatINR(pay.expected_amount_minor_units || 30000, pay.currency || 'INR')}
                           </td>
-                          <td className="p-3.5 font-mono font-bold text-[#E99A20]">
-                            {pay.transaction_reference}
+                          <td className="p-3.5">
+                            {pay.transaction_reference ? (
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-mono font-bold text-[#E99A20] text-xs">
+                                  {pay.transaction_reference}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => navigator.clipboard.writeText(pay.transaction_reference!)}
+                                  className="text-[#6B655D] hover:text-[#6D28D9] p-0.5 cursor-pointer"
+                                  title="Copy UTR"
+                                >
+                                  <Copy className="w-3 h-3" />
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="text-[#6B655D] italic text-[11px]">(Not Provided)</span>
+                            )}
                           </td>
                           <td className="p-3.5">
                             {pay.screenshot_url ? (
@@ -1739,24 +1893,62 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               <span className="text-[#6B655D] italic text-[11px]">No image</span>
                             )}
                           </td>
-                          <td className="p-3.5 text-[#6B655D]">
+                          <td className="p-3.5">
+                            {pay.status === 'PAID' ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-50 text-[#15803D] border border-emerald-200 text-[10px] font-bold">
+                                <CheckCircle2 className="w-3 h-3" /> Verified (PAID)
+                              </span>
+                            ) : pay.status === 'REJECTED' ? (
+                              <div>
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-rose-50 text-[#B91C1C] border border-rose-200 text-[10px] font-bold">
+                                  <XCircle className="w-3 h-3" /> REJECTED
+                                </span>
+                                {pay.rejection_reason && (
+                                  <p className="text-[10px] text-[#B91C1C] mt-0.5 truncate max-w-[140px]" title={pay.rejection_reason}>
+                                    {pay.rejection_reason}
+                                  </p>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-50 text-[#B45309] border border-amber-200 text-[10px] font-bold animate-pulse">
+                                <Clock className="w-3 h-3" /> Pending Review
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-3.5 text-[#6B655D] whitespace-nowrap">
                             {formatKolkataDateTime(pay.created_at)}
                           </td>
-                          <td className="p-3.5 text-right space-x-2">
-                            <button
-                              type="button"
-                              onClick={() => setVerifyModalPayment(pay)}
-                              className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs cursor-pointer shadow-xs"
-                            >
-                              Verify & Issue Pass
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setRejectModalPayment(pay)}
-                              className="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-[#B91C1C] border border-rose-200 font-bold text-xs cursor-pointer shadow-xs"
-                            >
-                              Reject
-                            </button>
+                          <td className="p-3.5 text-right whitespace-nowrap space-x-2">
+                            {pay.status === 'PENDING' ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => setVerifyModalPayment(pay)}
+                                  className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs cursor-pointer shadow-xs"
+                                >
+                                  Verify & Issue Pass
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setRejectModalPayment(pay)}
+                                  className="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-[#B91C1C] border border-rose-200 font-bold text-xs cursor-pointer shadow-xs"
+                                >
+                                  Reject
+                                </button>
+                              </>
+                            ) : pay.status === 'PAID' ? (
+                              <span className="text-[11px] text-[#15803D] font-bold">
+                                Entry Pass Issued
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => setVerifyModalPayment(pay)}
+                                className="px-2.5 py-1 rounded-lg bg-[#FFF0D9] hover:bg-[#FFE6C2] text-[#6D28D9] font-bold text-[11px] border border-[#E8E2D9] cursor-pointer"
+                              >
+                                Re-verify
+                              </button>
+                            )}
                           </td>
                         </tr>
                       ))}

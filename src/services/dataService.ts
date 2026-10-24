@@ -550,6 +550,139 @@ class PreDiwaliDataStore {
     return true;
   }
 
+  public async uploadIdentityPhoto(
+    photoDataUrlOrFile: string | File | Blob,
+    registrationId: string
+  ): Promise<string> {
+    if (!isSupabaseConfigured || !supabase) {
+      if (typeof photoDataUrlOrFile === 'string') return photoDataUrlOrFile;
+      return new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.onerror = () => reject(new Error('Failed to read identity photo file'));
+        reader.readAsDataURL(photoDataUrlOrFile as File);
+      });
+    }
+
+    try {
+      let fileBody: Blob | Buffer;
+      let contentType = 'image/jpeg';
+      let fileExt = 'jpg';
+
+      if (typeof photoDataUrlOrFile === 'string') {
+        if (!photoDataUrlOrFile.startsWith('data:')) {
+          return photoDataUrlOrFile; // Already a clean cloud URL
+        }
+        const mimeMatch = photoDataUrlOrFile.match(/^data:([^;]+);/);
+        if (mimeMatch) contentType = mimeMatch[1];
+        if (contentType.includes('png')) fileExt = 'png';
+        else if (contentType.includes('webp')) fileExt = 'webp';
+
+        const base64Data = photoDataUrlOrFile.split(',')[1];
+        if (typeof window !== 'undefined' && typeof window.atob === 'function') {
+          const byteCharacters = atob(base64Data);
+          const byteNumbers = new Array(byteCharacters.length);
+          for (let i = 0; i < byteCharacters.length; i++) {
+            byteNumbers[i] = byteCharacters.charCodeAt(i);
+          }
+          const byteArray = new Uint8Array(byteNumbers);
+          fileBody = new Blob([byteArray], { type: contentType });
+        } else {
+          fileBody = Buffer.from(base64Data, 'base64');
+        }
+      } else {
+        fileBody = photoDataUrlOrFile;
+        if (photoDataUrlOrFile instanceof File) {
+          fileExt = photoDataUrlOrFile.name.split('.').pop() || 'jpg';
+          contentType = photoDataUrlOrFile.type || 'image/jpeg';
+        }
+      }
+
+      const fileName = `identity-${registrationId}-${Date.now()}.${fileExt}`;
+      const { data, error } = await supabase.storage
+        .from('payment-screenshots')
+        .upload(fileName, fileBody, {
+          contentType,
+          cacheControl: '3600',
+          upsert: true,
+        });
+
+      if (!error && data) {
+        const { data: pubData } = supabase.storage
+          .from('payment-screenshots')
+          .getPublicUrl(fileName);
+        if (pubData?.publicUrl) {
+          return pubData.publicUrl;
+        }
+      } else if (error) {
+        console.warn('Supabase identity photo upload notice:', error.message);
+      }
+    } catch (e) {
+      console.warn('Identity photo upload error, keeping local data URL:', e);
+    }
+
+    return typeof photoDataUrlOrFile === 'string' ? photoDataUrlOrFile : '';
+  }
+
+  public async syncRegistrationToSupabase(reg: Registration): Promise<boolean> {
+    if (!isSupabaseConfigured || !supabase) return false;
+
+    try {
+      // 1. If identity photo is a base64 string, upload to Supabase storage for cloud URL
+      if (reg.identity_photo_url && reg.identity_photo_url.startsWith('data:')) {
+        try {
+          const uploadedUrl = await this.uploadIdentityPhoto(reg.identity_photo_url, reg.id);
+          if (uploadedUrl && uploadedUrl.startsWith('http')) {
+            reg.identity_photo_url = uploadedUrl;
+            this.persist();
+          }
+        } catch (e) {
+          console.warn('Could not upload identity photo to cloud storage:', e);
+        }
+      }
+
+      // 2. Prepare internal_notes metadata fallback (stores identity photo & talent safely in case of remote schema limitations)
+      const notesObj: Record<string, unknown> = {};
+      if (reg.identity_photo_url) notesObj.identity_photo_url = reg.identity_photo_url;
+      if (reg.performance_talent) notesObj.performance_talent = reg.performance_talent;
+      const internalNotesPayload = Object.keys(notesObj).length > 0 ? JSON.stringify(notesObj) : null;
+
+      const payloadWithCol: Record<string, unknown> = {
+        id: reg.id,
+        event_id: reg.event_id,
+        full_name: reg.full_name,
+        academic_year: reg.academic_year,
+        food_preference: reg.food_preference,
+        contact_number: reg.contact_number,
+        normalized_roll_number: reg.normalized_roll_number,
+        consent_agreed: reg.consent_agreed ?? true,
+        payment_status: reg.payment_status || 'PENDING',
+        expected_amount_minor_units: reg.expected_amount_minor_units || 30000,
+        currency: reg.currency || 'INR',
+        performance_talent: reg.performance_talent || null,
+        identity_photo_url: reg.identity_photo_url || null,
+        internal_notes: internalNotesPayload,
+        created_at: reg.created_at,
+        updated_at: reg.updated_at || new Date().toISOString(),
+      };
+
+      const { error } = await supabase.from('registrations').upsert(payloadWithCol);
+      if (error) {
+        // Fallback if 'identity_photo_url' column does not exist in registrations table
+        const { identity_photo_url, ...safePayload } = payloadWithCol;
+        const res2 = await supabase.from('registrations').upsert(safePayload);
+        if (res2.error) {
+          console.error('Supabase registration upsert fallback error:', res2.error);
+          return false;
+        }
+      }
+      return true;
+    } catch (err) {
+      console.warn('syncRegistrationToSupabase exception:', err);
+      return false;
+    }
+  }
+
   public async registerStudent(input: StudentRegistrationInput): Promise<{
     registration: Registration;
     alreadyRegistered: boolean;
@@ -622,49 +755,9 @@ class PreDiwaliDataStore {
     this.registrations.push(newReg);
     this.persist();
 
-    // Supabase Cloud Sync
+    // Supabase Cloud Sync with safe fallback & storage upload
     if (isSupabaseConfigured && supabase) {
-      try {
-        await supabase.from('registrations').insert({
-          id: newReg.id,
-          event_id: newReg.event_id,
-          full_name: newReg.full_name,
-          academic_year: newReg.academic_year,
-          food_preference: newReg.food_preference,
-          contact_number: newReg.contact_number,
-          normalized_roll_number: newReg.normalized_roll_number,
-          consent_agreed: newReg.consent_agreed,
-          payment_status: newReg.payment_status,
-          expected_amount_minor_units: newReg.expected_amount_minor_units,
-          currency: newReg.currency,
-          performance_talent: newReg.performance_talent || null,
-          identity_photo_url: newReg.identity_photo_url || null,
-          created_at: newReg.created_at,
-          updated_at: newReg.updated_at,
-        });
-      } catch {
-        // Fallback in case identity_photo_url column has not been added to remote DB yet
-        try {
-          await supabase.from('registrations').insert({
-            id: newReg.id,
-            event_id: newReg.event_id,
-            full_name: newReg.full_name,
-            academic_year: newReg.academic_year,
-            food_preference: newReg.food_preference,
-            contact_number: newReg.contact_number,
-            normalized_roll_number: newReg.normalized_roll_number,
-            consent_agreed: newReg.consent_agreed,
-            payment_status: newReg.payment_status,
-            expected_amount_minor_units: newReg.expected_amount_minor_units,
-            currency: newReg.currency,
-            performance_talent: newReg.performance_talent || null,
-            created_at: newReg.created_at,
-            updated_at: newReg.updated_at,
-          });
-        } catch (err2) {
-          console.warn('Supabase registration insert sync notice:', err2);
-        }
-      }
+      await this.syncRegistrationToSupabase(newReg);
     }
 
     return {
@@ -817,24 +910,37 @@ class PreDiwaliDataStore {
     // Supabase cloud sync
     if (isSupabaseConfigured && supabase) {
       try {
-        await supabase.from('payments').upsert({
+        // 1. Ensure registration is safely synced to Supabase first to prevent foreign key errors
+        await this.syncRegistrationToSupabase(reg);
+
+        // 2. Upsert payment record to Supabase
+        const { error: payErr } = await supabase.from('payments').upsert({
           id: payment.id,
           registration_id: payment.registration_id,
-          provider: payment.provider,
-          transaction_reference: payment.transaction_reference,
+          provider: payment.provider || 'STATIC_UPI',
+          transaction_reference: cleanRef || null,
           screenshot_url: payment.screenshot_url || null,
-          expected_amount_minor_units: payment.expected_amount_minor_units,
-          currency: payment.currency,
+          expected_amount_minor_units: payment.expected_amount_minor_units || 30000,
+          currency: payment.currency || 'INR',
           status: payment.status,
           verification_method: payment.verification_method,
           created_at: payment.created_at,
           updated_at: payment.updated_at,
         });
 
-        await supabase
+        if (payErr) {
+          console.warn('Supabase payment upsert error:', payErr);
+        }
+
+        // 3. Update registration payment_status in Supabase
+        const { error: regErr } = await supabase
           .from('registrations')
           .update({ payment_status: 'PENDING', updated_at: now })
           .eq('id', registrationId);
+
+        if (regErr) {
+          console.warn('Supabase reg status update error:', regErr);
+        }
       } catch (err) {
         console.warn('Supabase payment claim sync notice:', err);
       }
@@ -1197,23 +1303,7 @@ class PreDiwaliDataStore {
 
     // Supabase cloud sync
     if (isSupabaseConfigured && supabase) {
-      try {
-        await supabase
-          .from('registrations')
-          .update({
-            full_name: reg.full_name,
-            normalized_roll_number: reg.normalized_roll_number,
-            academic_year: reg.academic_year,
-            contact_number: reg.contact_number,
-            food_preference: reg.food_preference,
-            performance_talent: reg.performance_talent,
-            identity_photo_url: reg.identity_photo_url || null,
-            updated_at: reg.updated_at,
-          })
-          .eq('id', registrationId);
-      } catch (err) {
-        console.warn('Supabase updateRegistrationAdmin sync error:', err);
-      }
+      await this.syncRegistrationToSupabase(reg);
     }
 
     return reg;
@@ -1731,6 +1821,13 @@ class PreDiwaliDataStore {
       });
   }
 
+  public getAllPaymentsWithRegistrations(): Array<PaymentRecord & { registration?: Registration }> {
+    return this.payments.map((p) => {
+      const registration = this.getRegistrationById(p.registration_id);
+      return { ...p, registration };
+    });
+  }
+
   public getScansList(staffId?: string): EntryScanLog[] {
     if (staffId) {
       return this.scans.filter((s) => s.staff_user_id === staffId);
@@ -1864,6 +1961,22 @@ class PreDiwaliDataStore {
             }
           }
 
+          let photoUrl = row.identity_photo_url || undefined;
+          let talent = row.performance_talent || undefined;
+          if (row.internal_notes) {
+            try {
+              if (typeof row.internal_notes === 'string' && row.internal_notes.startsWith('{')) {
+                const parsed = JSON.parse(row.internal_notes);
+                if (!photoUrl) photoUrl = parsed.identity_photo_url || parsed.photo_url || undefined;
+                if (!talent) talent = parsed.performance_talent || undefined;
+              } else if (!photoUrl && typeof row.internal_notes === 'string' && (row.internal_notes.startsWith('http') || row.internal_notes.startsWith('data:image'))) {
+                photoUrl = row.internal_notes;
+              }
+            } catch {
+              // ignore
+            }
+          }
+
           fetchedRegs.push({
             id: row.id,
             event_id: row.event_id,
@@ -1876,11 +1989,19 @@ class PreDiwaliDataStore {
             payment_status: row.payment_status || 'PENDING',
             expected_amount_minor_units: 30000,
             currency: row.currency || 'INR',
-            performance_talent: row.performance_talent || undefined,
-            identity_photo_url: row.identity_photo_url || undefined,
+            performance_talent: talent,
+            identity_photo_url: photoUrl,
             created_at: row.created_at,
             updated_at: row.updated_at,
           });
+        }
+
+        // Resilient Sync: If any local registrations are not in Supabase yet, push them
+        for (const localReg of this.registrations) {
+          if (!fetchedRegs.some((r) => r.id === localReg.id)) {
+            this.syncRegistrationToSupabase(localReg).catch(() => {});
+            fetchedRegs.push(localReg);
+          }
         }
         this.registrations = fetchedRegs;
       }
@@ -1916,6 +2037,28 @@ class PreDiwaliDataStore {
           const matchingReg = this.registrations.find((r) => r.id === row.registration_id);
           if (matchingReg && row.status) {
             matchingReg.payment_status = row.status;
+          }
+        }
+
+        // Resilient Sync: If any local payments are not in Supabase yet, push them
+        for (const localPay of this.payments) {
+          if (!fetchedPays.some((p) => p.id === localPay.id)) {
+            Promise.resolve(
+              supabase.from('payments').upsert({
+                id: localPay.id,
+                registration_id: localPay.registration_id,
+                provider: localPay.provider || 'STATIC_UPI',
+                transaction_reference: localPay.transaction_reference || null,
+                screenshot_url: localPay.screenshot_url || null,
+                expected_amount_minor_units: localPay.expected_amount_minor_units || 30000,
+                currency: localPay.currency || 'INR',
+                status: localPay.status || 'PENDING',
+                verification_method: localPay.verification_method || 'MANUAL_ADMIN',
+                created_at: localPay.created_at,
+                updated_at: localPay.updated_at,
+              })
+            ).catch(() => {});
+            fetchedPays.push(localPay);
           }
         }
         this.payments = fetchedPays;
