@@ -195,13 +195,36 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
+  const silentSyncAndRefresh = async () => {
+    try {
+      await dataService.initSupabase();
+      refreshAll();
+    } catch {
+      refreshAll();
+    }
+  };
+
+  const handleDeleteRegistration = async (regId: string, studentName: string) => {
+    const confirmed = window.confirm(
+      `Delete registration for ${studentName}? This will permanently remove their registration, payment, and QR pass from both the database and dashboard.`
+    );
+    if (!confirmed) return;
+    try {
+      await dataService.deleteRegistrationAdmin(regId, adminUser.id);
+      refreshAll();
+      alert(`Registration for ${studentName} deleted successfully.`);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to delete registration');
+    }
+  };
+
   useEffect(() => {
     refreshAll();
-    syncAndRefresh();
+    silentSyncAndRefresh();
 
-    // 1-second automatic polling interval to guarantee instant updates from students
+    // 1-second silent polling interval to guarantee instant live updates without UI flickering
     const pollInterval = setInterval(() => {
-      syncAndRefresh();
+      silentSyncAndRefresh();
     }, 1000);
 
     // Real-time Postgres changes subscription from Supabase
@@ -220,7 +243,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // Proactively sync when switching to Payments or Registrations tabs
   useEffect(() => {
     if (activeTab === 'PAYMENTS' || activeTab === 'REGISTRATIONS') {
-      syncAndRefresh();
+      silentSyncAndRefresh();
     }
   }, [activeTab]);
 
@@ -1633,6 +1656,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             Reset Dinner
                           </button>
                         )}
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteRegistration(reg.id, reg.full_name)}
+                          className="py-1 px-2 rounded-lg bg-rose-50 hover:bg-rose-100 text-[#B91C1C] border border-rose-200 text-[11px] font-bold cursor-pointer"
+                          title="Delete registration permanently"
+                        >
+                          Delete
+                        </button>
                       </div>
                     </div>
                   ))
@@ -1906,6 +1937,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   <span>Reset Dinner</span>
                                 </button>
                               )}
+
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteRegistration(reg.id, reg.full_name)}
+                                className="px-2 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-[#B91C1C] border border-rose-200 text-[10px] font-bold inline-flex items-center gap-0.5 cursor-pointer transition-colors shadow-2xs"
+                                title="Delete student registration from database and dashboard"
+                              >
+                                <Trash2 className="w-2.5 h-2.5" />
+                                <span>Delete</span>
+                              </button>
                             </div>
                           </td>
                         </tr>
