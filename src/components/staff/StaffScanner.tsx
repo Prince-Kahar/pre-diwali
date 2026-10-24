@@ -140,37 +140,59 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
   const startCamera = async () => {
     setScanResult(null);
     sound.init(); // Unlock Web Audio API context immediately on user click
-    try {
-      if (scannerRef.current) {
-        try {
-          if (scannerRef.current.isScanning) {
-            await scannerRef.current.stop();
-          }
-        } catch {
-          // ignore
+
+    // Clean up any existing scanner instance properly before starting fresh
+    if (scannerRef.current) {
+      try {
+        if (scannerRef.current.isScanning) {
+          await scannerRef.current.stop();
         }
-      } else {
-        // Dedicated pure QR code decoder (stable, no BarcodeDetector crashes)
-        scannerRef.current = new Html5Qrcode('qr-reader-container', {
-          formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
-          verbose: false,
-        });
+        await scannerRef.current.clear();
+      } catch (e) {
+        console.warn('Previous camera instance cleanup notice:', e);
+      }
+      scannerRef.current = null;
+    }
+
+    try {
+      const container = document.getElementById('qr-reader-container');
+      if (!container) {
+        setTimeout(startCamera, 100);
+        return;
       }
 
+      // Dedicated pure QR code decoder (stable, no BarcodeDetector crashes)
+      scannerRef.current = new Html5Qrcode('qr-reader-container', {
+        formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+        verbose: false,
+      });
+
       const scanConfig = {
-        fps: 15,
+        fps: 20,
         qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
           const edge = Math.min(viewfinderWidth, viewfinderHeight);
-          const size = Math.floor(edge * 0.72);
+          const size = Math.floor(edge * 0.85);
           return { width: size, height: size };
         },
-        aspectRatio: 1.0,
       };
 
       const onScanSuccess = async (decodedText: string) => {
         if (cooldownRef.current || isProcessing) return;
-        const cleanToken = decodedText.trim();
+        let cleanToken = decodedText.trim();
         if (!cleanToken) return;
+
+        // Clean token if wrapped in quotes or URL
+        if (cleanToken.startsWith('"') && cleanToken.endsWith('"')) {
+          cleanToken = cleanToken.slice(1, -1).trim();
+        }
+        const urlMatch = cleanToken.match(/[?&]token=([^&]+)/i);
+        if (urlMatch) {
+          cleanToken = decodeURIComponent(urlMatch[1]).trim();
+        }
+        const tokenMatch = cleanToken.match(/PREDIWALI_PASS_[a-f0-9]+/i);
+        if (tokenMatch) {
+          cleanToken = tokenMatch[0];
+        }
 
         // INSTANT AUDIO BEEP on QR Detection!
         sound.playScanBeep();
@@ -178,7 +200,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
         // Prevent accidental instant duplicate auto-scans for the same token
         const now = Date.now();
         const lastTime = recentlyProcessedTokensRef.current.get(cleanToken);
-        if (lastTime && now - lastTime < 15000) {
+        if (lastTime && now - lastTime < 10000) {
           return;
         }
 
@@ -186,7 +208,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
         recentlyProcessedTokensRef.current.set(cleanToken, now);
 
         // Stop camera cleanly in background so it never scans twice
-        stopCamera();
+        await stopCamera();
 
         // Process the single verified scan
         await handleProcessToken(cleanToken);
@@ -207,7 +229,8 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
             cameras.find(
               (c) =>
                 c.label.toLowerCase().includes('back') ||
-                c.label.toLowerCase().includes('rear')
+                c.label.toLowerCase().includes('rear') ||
+                c.label.toLowerCase().includes('environment')
             ) || cameras[0];
           await scannerRef.current.start(
             rearCam.id,
@@ -240,14 +263,19 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
   };
 
   const stopCamera = async () => {
-    if (scannerRef.current && isScanning) {
+    if (scannerRef.current) {
       try {
-        await scannerRef.current.stop();
+        if (scannerRef.current.isScanning) {
+          await scannerRef.current.stop();
+        }
+        await scannerRef.current.clear();
       } catch (err) {
         console.warn('Camera stop error:', err);
       }
+      scannerRef.current = null;
     }
     setIsScanning(false);
+    setTorchOn(false);
   };
 
   const toggleTorch = async () => {
@@ -330,13 +358,20 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
     }
   };
 
-  const resetForNextScan = () => {
+  const resetForNextScan = async () => {
+    sound.init();
     setScanResult(null);
     cooldownRef.current = false;
-    // Allow DOM to re-render the camera container before starting
-    setTimeout(() => {
-      startCamera();
-    }, 150);
+    await startCamera();
+  };
+
+  const switchScanMode = async (mode: ScanType) => {
+    if (scanType === mode) return;
+    sound.init();
+    setScanType(mode);
+    setScanResult(null);
+    cooldownRef.current = false;
+    await startCamera();
   };
 
   // Determine status color theme based on scan mode & result code
@@ -346,7 +381,10 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
   const isRejected = scanResult && !isApproved && !isPending;
 
   return (
-    <div className="max-w-2xl mx-auto py-6 space-y-6 bg-[#FFFCF5]">
+    <div
+      onPointerDown={() => sound.init()}
+      className="max-w-2xl mx-auto py-6 space-y-6 bg-[#FFFCF5]"
+    >
       {/* Staff Header */}
       <div className="flex items-center justify-between p-4 rounded-3xl bg-white border border-[#E8E2D9] shadow-xs">
         <div className="flex items-center gap-3">
@@ -440,12 +478,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
         <div className="grid grid-cols-2 gap-2">
           <button
             type="button"
-            onClick={() => {
-              if (scanType !== 'ENTRY') {
-                setScanType('ENTRY');
-                setScanResult(null);
-              }
-            }}
+            onClick={() => switchScanMode('ENTRY')}
             className={`py-3 px-3 rounded-2xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all cursor-pointer ${
               scanType === 'ENTRY'
                 ? 'bg-[#6D28D9] text-white shadow-md'
@@ -458,12 +491,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
 
           <button
             type="button"
-            onClick={() => {
-              if (scanType !== 'DINNER') {
-                setScanType('DINNER');
-                setScanResult(null);
-              }
-            }}
+            onClick={() => switchScanMode('DINNER')}
             className={`py-3 px-3 rounded-2xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all cursor-pointer ${
               scanType === 'DINNER'
                 ? 'bg-[#E99A20] text-white shadow-md'
@@ -482,7 +510,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
       </div>
 
       {/* ----------------- AUTHORITATIVE RESULT SCREEN ----------------- */}
-      {scanResult ? (
+      {scanResult && (
         <div
           className={`p-6 sm:p-8 rounded-3xl border-2 text-center space-y-6 shadow-sm transition-all animate-in zoom-in-95 ${
             isApproved
@@ -653,9 +681,10 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
             </button>
           </div>
         </div>
-      ) : (
-        /* ----------------- CAMERA & SCANNER INTERFACE ----------------- */
-        <div className="p-6 rounded-3xl bg-white border border-[#E8E2D9] shadow-sm space-y-6">
+      )}
+
+      {/* ----------------- CAMERA & SCANNER INTERFACE ----------------- */}
+      <div className={`p-6 rounded-3xl bg-white border border-[#E8E2D9] shadow-sm space-y-6 ${scanResult ? 'hidden' : 'block'}`}>
           <div className="text-center space-y-1">
             <h2 className="text-xl font-bold text-[#29243A]">
               Live Camera {scanType === 'ENTRY' ? 'Gate Admission' : 'Dinner Counter'} Scanner
@@ -781,7 +810,6 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
             </form>
           )}
         </div>
-      )}
 
       {/* ----------------- SCAN HISTORY MODAL ----------------- */}
       {showHistoryModal && (
