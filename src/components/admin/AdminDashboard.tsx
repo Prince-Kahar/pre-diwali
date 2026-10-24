@@ -1422,105 +1422,109 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
 
               {/* Filters */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3">
-                <div className="relative">
-                  <Search className="w-4 h-4 text-[#6B655D] absolute left-3 top-3" />
-                  <input
-                    type="text"
-                    placeholder="Search name, roll, phone, talent..."
-                    value={searchTerm}
-                    onChange={(e) => {
-                      setSearchTerm(e.target.value);
-                      setCurrentPage(1);
-                    }}
-                    className="w-full pl-9 pr-8 py-2 rounded-xl bg-[#FFFCF5] border border-[#E8E2D9] text-xs text-[#29243A] placeholder-[#6B655D]/60 focus:outline-none focus:border-[#6D28D9]"
-                  />
-                  {searchTerm && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSearchTerm('');
+              <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5 flex-1">
+                  <div className="relative">
+                    <Search className="w-4 h-4 text-[#6B655D] absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      placeholder="Search name, roll, phone, talent..."
+                      value={searchTerm}
+                      onChange={(e) => {
+                        setSearchTerm(e.target.value);
                         setCurrentPage(1);
                       }}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 rounded-full hover:bg-[#E8E2D9] text-[#6B655D] cursor-pointer"
-                      title="Clear search"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  )}
+                      className="w-full pl-9 pr-8 py-2 rounded-xl bg-[#FFFCF5] border border-[#E8E2D9] text-xs text-[#29243A] placeholder-[#6B655D]/60 focus:outline-none focus:border-[#6D28D9]"
+                    />
+                    {searchTerm && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSearchTerm('');
+                          setCurrentPage(1);
+                        }}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 rounded-full hover:bg-[#E8E2D9] text-[#6B655D] cursor-pointer"
+                        title="Clear search"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+
+                  <select
+                    value={yearFilter}
+                    onChange={(e) => {
+                      setYearFilter(e.target.value as 'ALL' | AcademicYear | 'FY' | 'SY');
+                      setCurrentPage(1);
+                    }}
+                    className="px-3 py-2 rounded-xl bg-[#FFFCF5] border border-[#E8E2D9] text-xs text-[#29243A] font-semibold cursor-pointer"
+                  >
+                    <option value="ALL">All Academic Years</option>
+                    <option value="FY - M.Sc.IT">FY - M.Sc.IT</option>
+                    <option value="FY - Data Science">FY - Data Science</option>
+                    <option value="SY - M.Sc.IT">SY - M.Sc.IT</option>
+                    <option value="SY - Data Science">SY - Data Science</option>
+                    <option value="FY">First Year (FY - All)</option>
+                    <option value="SY">Second Year (SY - All)</option>
+                  </select>
+
+                  <select
+                    value={foodFilter}
+                    onChange={(e) => {
+                      setFoodFilter(e.target.value as 'ALL' | FoodPreference);
+                      setCurrentPage(1);
+                    }}
+                    className="px-3 py-2 rounded-xl bg-[#FFFCF5] border border-[#E8E2D9] text-xs text-[#29243A] font-semibold cursor-pointer"
+                  >
+                    <option value="ALL">All Meals (Regular & Jain)</option>
+                    <option value="Regular">Regular Dinner</option>
+                    <option value="Jain">Jain Dinner</option>
+                  </select>
+
+                  <select
+                    value={paymentFilter}
+                    onChange={(e) => {
+                      setPaymentFilter(e.target.value as 'ALL' | PaymentStatus);
+                      setCurrentPage(1);
+                    }}
+                    className="px-3 py-2 rounded-xl bg-[#FFFCF5] border border-[#E8E2D9] text-xs text-[#29243A] font-semibold cursor-pointer"
+                  >
+                    <option value="ALL">All Payment Statuses</option>
+                    <option value="PAID">PAID</option>
+                    <option value="PENDING">PENDING</option>
+                    <option value="REJECTED">REJECTED</option>
+                  </select>
                 </div>
 
-                <select
-                  value={yearFilter}
-                  onChange={(e) => {
-                    setYearFilter(e.target.value as 'ALL' | AcademicYear | 'FY' | 'SY');
-                    setCurrentPage(1);
-                  }}
-                  className="px-3 py-2 rounded-xl bg-[#FFFCF5] border border-[#E8E2D9] text-xs text-[#29243A] font-semibold cursor-pointer"
-                >
-                  <option value="ALL">All Academic Years</option>
-                  <option value="FY - M.Sc.IT">FY - M.Sc.IT</option>
-                  <option value="FY - Data Science">FY - Data Science</option>
-                  <option value="SY - M.Sc.IT">SY - M.Sc.IT</option>
-                  <option value="SY - Data Science">SY - Data Science</option>
-                  <option value="FY">First Year (FY - All)</option>
-                  <option value="SY">Second Year (SY - All)</option>
-                </select>
-
-                <select
-                  value={foodFilter}
-                  onChange={(e) => {
-                    setFoodFilter(e.target.value as 'ALL' | FoodPreference);
-                    setCurrentPage(1);
-                  }}
-                  className="px-3 py-2 rounded-xl bg-[#FFFCF5] border border-[#E8E2D9] text-xs text-[#29243A] font-semibold cursor-pointer"
-                >
-                  <option value="ALL">All Meals (Regular & Jain)</option>
-                  <option value="Regular">Regular Dinner</option>
-                  <option value="Jain">Jain Dinner</option>
-                </select>
-
-                <select
-                  value={paymentFilter}
-                  onChange={(e) => {
-                    setPaymentFilter(e.target.value as 'ALL' | PaymentStatus);
-                    setCurrentPage(1);
-                  }}
-                  className="px-3 py-2 rounded-xl bg-[#FFFCF5] border border-[#E8E2D9] text-xs text-[#29243A] font-semibold cursor-pointer"
-                >
-                  <option value="ALL">All Payment Statuses</option>
-                  <option value="PAID">PAID</option>
-                  <option value="PENDING">PENDING</option>
-                  <option value="REJECTED">REJECTED</option>
-                </select>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSearchTerm('');
-                    setYearFilter('ALL');
-                    setFoodFilter('ALL');
-                    setPaymentFilter('ALL');
-                    setEntryFilter('ALL');
-                    setCurrentPage(1);
-                  }}
-                  className="px-3.5 py-2 rounded-xl bg-[#FFF0D9] hover:bg-[#FFE6C2] text-[#6D28D9] border border-[#E8E2D9] text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-2xs whitespace-nowrap hover:shadow-xs"
-                  title="Clear all filters and search"
-                >
-                  <RotateCcw className="w-3.5 h-3.5 text-[#E99A20]" />
-                  <span>Clear All</span>
-                </button>
+                {(searchTerm || yearFilter !== 'ALL' || foodFilter !== 'ALL' || paymentFilter !== 'ALL') && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchTerm('');
+                      setYearFilter('ALL');
+                      setFoodFilter('ALL');
+                      setPaymentFilter('ALL');
+                      setEntryFilter('ALL');
+                      setCurrentPage(1);
+                    }}
+                    className="px-3.5 py-2 rounded-xl bg-[#FFF0D9] hover:bg-[#FFE6C2] text-[#6D28D9] border border-[#E8E2D9] text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-2xs whitespace-nowrap self-start sm:self-auto"
+                    title="Reset all filters to default"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5 text-[#E99A20]" />
+                    <span>Reset Filters</span>
+                  </button>
+                )}
               </div>
 
-              {/* Responsive Table with Horizontal Scroll */}
+              {/* Responsive Table */}
               <div className="overflow-x-auto rounded-2xl border border-[#E8E2D9] shadow-2xs">
-                <table className="w-full min-w-[980px] text-left text-xs text-[#29243A]">
+                <table className="w-full min-w-[940px] text-left text-xs text-[#29243A]">
                   <thead className="bg-[#FFF0D9] text-[#29243A] font-bold border-b border-[#E8E2D9]">
                     <tr>
                       <th
-                        className="p-3.5 cursor-pointer hover:bg-[#FFE6C2] transition-colors select-none"
+                        className="p-3.5 cursor-pointer hover:bg-[#FFE6C2] transition-colors select-none w-20"
                         onClick={() => handleToggleSort('roll')}
-                        title="Click to sort by Roll Number (Natural numeric ordering)"
+                        title="Click to sort by Roll Number"
                       >
                         <div className="flex items-center gap-1.5">
                           <span>Roll No</span>
@@ -1541,7 +1545,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         title="Click to sort by Student Name"
                       >
                         <div className="flex items-center gap-1.5">
-                          <span>Student & Identity</span>
+                          <span>Student</span>
                           {sortField === 'name' ? (
                             sortOrder === 'asc' ? (
                               <ArrowUp className="w-3.5 h-3.5 text-[#6D28D9]" />
@@ -1553,21 +1557,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           )}
                         </div>
                       </th>
-                      <th className="p-3.5">Course / Year</th>
-                      <th className="p-3.5">Food</th>
-                      <th className="p-3.5">Stage Talent</th>
-                      <th className="p-3.5">Reg & Appr</th>
-                      <th className="p-3.5 bg-emerald-50/50 text-[#15803D]">Gate Entry QR</th>
-                      <th className="p-3.5 bg-amber-50/50 text-[#B45309]">Dinner QR Scan</th>
+                      <th className="p-3.5">Course & Meal</th>
+                      <th className="p-3.5">Timestamps</th>
+                      <th className="p-3.5">Gate Entry QR</th>
+                      <th className="p-3.5">Dinner QR Scan</th>
                       <th className="p-3.5">Payment</th>
-                      <th className="p-3.5">Pass Status</th>
                       <th className="p-3.5 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#E8E2D9] bg-white">
                     {paginatedRegistrations.length === 0 ? (
                       <tr>
-                        <td colSpan={11} className="p-8 text-center text-[#6B655D]">
+                        <td colSpan={8} className="p-8 text-center text-[#6B655D]">
                           No registrations match the selected filters.
                         </td>
                       </tr>
@@ -1600,35 +1601,33 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               )}
                               <div>
                                 <span className="font-bold text-[#29243A] block">{reg.full_name}</span>
-                                <span className="text-[10px] text-[#6B655D]">{reg.contact_number}</span>
+                                <span className="text-[10px] text-[#6B655D] font-mono">{reg.contact_number}</span>
                               </div>
                             </div>
                           </td>
-                          <td className="p-3.5 whitespace-nowrap text-[#29243A]">{reg.academic_year}</td>
-                          <td className="p-3.5 whitespace-nowrap">
-                            <span className="px-2 py-0.5 rounded-full bg-[#FFF0D9] text-[#29243A] font-bold text-[10px]">
-                              {reg.food_preference}
-                            </span>
-                          </td>
-                          <td className="p-3.5">
-                            {reg.performance_talent ? (
-                              <span
-                                className="px-2 py-0.5 rounded-full bg-purple-50 text-[#6D28D9] font-bold text-[10px] border border-purple-200 inline-block max-w-[130px] truncate"
-                                title={reg.performance_talent}
-                              >
-                                🎭 {reg.performance_talent}
+                          <td className="p-3.5 whitespace-nowrap space-y-1">
+                            <div className="text-[#29243A] font-semibold text-xs">{reg.academic_year}</div>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="px-2 py-0.5 rounded-full bg-[#FFF0D9] text-[#29243A] font-bold text-[10px]">
+                                {reg.food_preference}
                               </span>
-                            ) : (
-                              <span className="text-[#6B655D]/60 text-[10px] italic">None</span>
-                            )}
+                              {reg.performance_talent && (
+                                <span
+                                  className="px-2 py-0.5 rounded-full bg-purple-50 text-[#6D28D9] font-bold text-[10px] border border-purple-200 truncate max-w-[110px]"
+                                  title={reg.performance_talent}
+                                >
+                                  🎭 {reg.performance_talent}
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td className="p-3.5 text-[10px] space-y-0.5 whitespace-nowrap">
                             <div className="flex items-center gap-1.5 text-[#29243A]">
-                              <span className="font-bold text-[#6B655D] w-9">Reg:</span>
+                              <span className="font-bold text-[#6B655D] w-8">Reg:</span>
                               <span>{formatKolkataDateTime(reg.created_at)}</span>
                             </div>
                             <div className="flex items-center gap-1.5">
-                              <span className="font-bold text-[#6B655D] w-9">Appr:</span>
+                              <span className="font-bold text-[#6B655D] w-8">Appr:</span>
                               <span
                                 className={
                                   reg.payment?.verified_at
@@ -1651,38 +1650,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <td className="p-3.5 whitespace-nowrap">
                             {reg.pass ? (
                               reg.pass.redeemed_at || reg.pass.status === 'USED' ? (
-                                <div className="space-y-1">
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-[#15803D] border border-emerald-200 font-bold text-[10px]">
-                                    <CheckCircle2 className="w-3 h-3 text-[#15803D]" /> Gate Entry Done
+                                <div className="space-y-0.5">
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-50 text-[#15803D] border border-emerald-200 font-bold text-[10px]">
+                                    <CheckCircle2 className="w-3 h-3 text-[#15803D]" /> Gate Done
                                   </span>
                                   <div className="text-[10px] text-[#6B655D]">
-                                    {reg.pass.redeemed_at ? formatKolkataDateTime(reg.pass.redeemed_at) : 'Scanned'}
+                                    {reg.pass.redeemed_at ? formatKolkataDateTime(reg.pass.redeemed_at) : 'Admitted'}
                                   </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleReactivatePass(reg.pass!.id, reg.full_name)}
-                                    className="px-2 py-0.5 rounded bg-emerald-100 hover:bg-emerald-200 text-[#15803D] text-[9px] font-bold inline-flex items-center gap-0.5 cursor-pointer shadow-2xs"
-                                    title="Reset gate entry so student can scan again at entrance"
-                                  >
-                                    <RotateCcw className="w-2.5 h-2.5" /> Re-use QR
-                                  </button>
                                 </div>
                               ) : (
-                                <div className="space-y-1">
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-[#6B655D] border border-slate-200 font-medium text-[10px]">
-                                    ○ Not Scanned
-                                  </span>
-                                  {reg.pass.status === 'VALID' && (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleMarkGateDone(reg.pass!.id, reg.full_name)}
-                                      className="px-2 py-0.5 rounded bg-[#FFF0D9] hover:bg-[#FFE6C2] text-[#6D28D9] border border-[#E8E2D9] text-[9px] font-bold block cursor-pointer shadow-2xs"
-                                      title="Manually mark Gate Entry QR as Done"
-                                    >
-                                      ✓ Mark Gate Done
-                                    </button>
-                                  )}
-                                </div>
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-100 text-[#6B655D] border border-slate-200 font-medium text-[10px]">
+                                  ○ Not Scanned
+                                </span>
                               )
                             ) : (
                               <span className="text-[#6B655D] text-[10px]">No Pass</span>
@@ -1693,56 +1672,35 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <td className="p-3.5 whitespace-nowrap">
                             {reg.pass ? (
                               reg.pass.dinner_redeemed_at ? (
-                                <div className="space-y-1">
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 text-[#B45309] border border-amber-200 font-bold text-[10px]">
-                                    <Utensils className="w-3 h-3 text-[#E99A20]" /> Dinner Done ({reg.food_preference})
+                                <div className="space-y-0.5">
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-50 text-[#B45309] border border-amber-200 font-bold text-[10px]">
+                                    <Utensils className="w-3 h-3 text-[#E99A20]" /> Dinner Done
                                   </span>
                                   <div className="text-[10px] text-[#6B655D]">
                                     {formatKolkataDateTime(reg.pass.dinner_redeemed_at)}
                                   </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleResetDinnerScan(reg.pass!.id, reg.full_name)}
-                                    className="px-2 py-0.5 rounded bg-amber-100 hover:bg-amber-200 text-[#B45309] text-[9px] font-bold inline-flex items-center gap-0.5 cursor-pointer shadow-2xs"
-                                    title="Reset dinner scan coupon so student can claim meal"
-                                  >
-                                    <RotateCcw className="w-2.5 h-2.5" /> Reset Dinner
-                                  </button>
                                 </div>
                               ) : reg.pass.redeemed_at || reg.pass.status === 'USED' ? (
-                                <div className="space-y-1">
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-50 text-[#6D28D9] border border-purple-200 font-medium text-[10px]">
-                                    Ready for Dinner
-                                  </span>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleMarkDinnerDone(reg.pass!.id, reg.full_name)}
-                                    className="px-2 py-0.5 rounded bg-[#FFF0D9] hover:bg-[#FFE6C2] text-[#6D28D9] border border-[#E8E2D9] text-[9px] font-bold block cursor-pointer shadow-2xs"
-                                    title="Manually mark Dinner QR Scan as Done"
-                                  >
-                                    ✓ Mark Dinner Done
-                                  </button>
-                                </div>
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-purple-50 text-[#6D28D9] border border-purple-200 font-bold text-[10px]">
+                                  Ready for Dinner
+                                </span>
                               ) : (
-                                <div className="space-y-0.5">
-                                  <span
-                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-50 text-[#B91C1C] border border-rose-200 font-medium text-[10px]"
-                                    title="Gate Entry QR must be scanned first before dinner coupon can be redeemed"
-                                  >
-                                    🔒 Gate Entry Required
-                                  </span>
-                                  <div className="text-[9px] text-[#6B655D]/70 italic">
-                                    Scan gate first
-                                  </div>
-                                </div>
+                                <span
+                                  className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-rose-50 text-[#B91C1C] border border-rose-200 font-medium text-[10px]"
+                                  title="Gate Entry QR must be scanned first"
+                                >
+                                  🔒 Gate Required
+                                </span>
                               )
                             ) : (
                               <span className="text-[#6B655D] text-[10px]">No Pass</span>
                             )}
                           </td>
+
+                          {/* Payment Status */}
                           <td className="p-3.5 whitespace-nowrap">
                             <span
-                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
                                 reg.payment_status === 'PAID'
                                   ? 'bg-emerald-50 text-[#15803D] border border-emerald-200'
                                   : reg.payment_status === 'PENDING'
@@ -1753,29 +1711,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               {reg.payment_status}
                             </span>
                           </td>
-                          <td className="p-3.5 whitespace-nowrap">
-                            {reg.pass ? (
-                              <span
-                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                  reg.pass.status === 'VALID'
-                                    ? 'bg-emerald-50 text-[#15803D]'
-                                    : reg.pass.status === 'USED'
-                                    ? 'bg-amber-50 text-[#B45309]'
-                                    : 'bg-rose-50 text-[#B91C1C]'
-                                }`}
-                              >
-                                {reg.pass.status}
-                              </span>
-                            ) : (
-                              <span className="text-[#6B655D] text-[10px]">No Pass</span>
-                            )}
-                          </td>
+
+                          {/* Actions Column (100% visible and uncluttered) */}
                           <td className="p-3.5 text-right whitespace-nowrap">
-                            <div className="flex items-center justify-end gap-1">
+                            <div className="flex items-center justify-end gap-1.5">
                               <button
                                 type="button"
                                 onClick={() => setSelectedReg(reg)}
-                                className="px-2 py-1 rounded-lg bg-[#FFFCF5] hover:bg-[#FFF0D9] text-[#29243A] border border-[#E8E2D9] text-[10px] font-bold cursor-pointer"
+                                className="px-2.5 py-1 rounded-lg bg-[#FFFCF5] hover:bg-[#FFF0D9] text-[#29243A] border border-[#E8E2D9] text-[11px] font-bold cursor-pointer transition-colors shadow-2xs"
                                 title="View full registration details"
                               >
                                 Details
@@ -1784,7 +1727,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               <button
                                 type="button"
                                 onClick={() => handleStartEditReg(reg)}
-                                className="px-2 py-1 rounded-lg bg-[#FFF0D9] hover:bg-[#FFE6C2] text-[#6D28D9] border border-[#E8E2D9] text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer"
+                                className="px-2.5 py-1 rounded-lg bg-[#FFF0D9] hover:bg-[#FFE6C2] text-[#6D28D9] border border-[#E8E2D9] text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
                                 title="Edit student registration details"
                               >
                                 <Edit3 className="w-2.5 h-2.5" />
@@ -1795,7 +1738,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 <button
                                   type="button"
                                   onClick={() => handleReactivatePass(reg.pass!.id, reg.full_name)}
-                                  className="px-2 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-[#15803D] border border-emerald-200 text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer"
+                                  className="px-2 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-[#15803D] border border-emerald-200 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
                                   title="Allow student to re-enter using their existing QR code"
                                 >
                                   <RotateCcw className="w-2.5 h-2.5" />
@@ -1803,26 +1746,39 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 </button>
                               )}
 
+                              {reg.pass?.status === 'VALID' && !reg.pass?.redeemed_at && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleMarkGateDone(reg.pass!.id, reg.full_name)}
+                                  className="px-2 py-1 rounded-lg bg-purple-50 hover:bg-purple-100 text-[#6D28D9] border border-purple-200 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                                  title="Manually mark Gate Entry QR as Done"
+                                >
+                                  <CheckCircle2 className="w-2.5 h-2.5" />
+                                  <span>Mark Gate</span>
+                                </button>
+                              )}
+
+                              {reg.pass && (reg.pass.redeemed_at || reg.pass.status === 'USED') && !reg.pass.dinner_redeemed_at && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleMarkDinnerDone(reg.pass!.id, reg.full_name)}
+                                  className="px-2 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-[#B45309] border border-amber-200 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                                  title="Manually mark Dinner QR Scan as Done"
+                                >
+                                  <Utensils className="w-2.5 h-2.5 text-[#E99A20]" />
+                                  <span>Mark Dinner</span>
+                                </button>
+                              )}
+
                               {reg.pass?.dinner_redeemed_at && (
                                 <button
                                   type="button"
                                   onClick={() => handleResetDinnerScan(reg.pass!.id, reg.full_name)}
-                                  className="px-2 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-[#B45309] border border-amber-200 text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer"
+                                  className="px-2 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-[#B45309] border border-amber-200 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
                                   title="Reset dinner coupon so student can claim meal"
                                 >
-                                  <Utensils className="w-2.5 h-2.5" />
+                                  <RotateCcw className="w-2.5 h-2.5" />
                                   <span>Reset Dinner</span>
-                                </button>
-                              )}
-
-                              {reg.pass?.status === 'VALID' && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleRevokePass(reg.pass!.id)}
-                                  className="px-2 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-[#B91C1C] border border-rose-200 text-[10px] font-bold cursor-pointer"
-                                  title="Revoke pass"
-                                >
-                                  Revoke
                                 </button>
                               )}
                             </div>
