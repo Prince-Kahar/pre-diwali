@@ -130,7 +130,7 @@ class PreDiwaliDataStore {
 
   // Mutex lock for atomic operations (concurrency safety)
   private locks: Map<string, Promise<void>> = new Map();
-  private isSupabaseSyncing = false;
+  private syncPromise: Promise<{ success: boolean; registrationsCount: number; paymentsCount: number }> | null = null;
   private realtimeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
@@ -1464,6 +1464,25 @@ class PreDiwaliDataStore {
     return newPass;
   }
 
+  public getPasses(): EntryPass[] {
+    return [...this.passes];
+  }
+
+  public async clearAllScansAdmin(adminId: string): Promise<boolean> {
+    const admin = this.profiles.find((p) => p.id === adminId && p.role === 'ADMIN');
+    if (!admin) throw new Error('Unauthorized');
+    this.scans = [];
+    this.persist();
+    if (isSupabaseConfigured && supabase) {
+      try {
+        await supabase.from('entry_scans').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      } catch (e) {
+        console.warn('Clear scans error:', e);
+      }
+    }
+    return true;
+  }
+
   public async deleteRegistrationAdmin(registrationId: string, adminId: string): Promise<boolean> {
     const admin = this.profiles.find((p) => p.id === adminId && p.role === 'ADMIN');
     if (!admin) throw new Error('Unauthorized');
@@ -1471,16 +1490,22 @@ class PreDiwaliDataStore {
     const reg = this.registrations.find((r) => r.id === registrationId);
     if (!reg) return false;
 
+    const passIds = this.passes.filter((p) => p.registration_id === registrationId).map((p) => p.id);
     this.registrations = this.registrations.filter((r) => r.id !== registrationId);
     this.payments = this.payments.filter((p) => p.registration_id !== registrationId);
     this.passes = this.passes.filter((p) => p.registration_id !== registrationId);
-    this.scans = this.scans.filter((s) => s.pass_id !== registrationId);
+    this.scans = this.scans.filter((s) => s.pass_id !== registrationId && !passIds.includes(s.pass_id || ''));
 
     this.addAuditLog(adminId, 'DELETE_REGISTRATION', 'registration', registrationId, `Admin deleted registration for Roll: ${reg.normalized_roll_number}`);
     this.persist();
 
     if (isSupabaseConfigured && supabase) {
       try {
+        if (passIds.length > 0) {
+          await supabase.from('entry_scans').delete().in('pass_id', [registrationId, ...passIds]);
+        } else {
+          await supabase.from('entry_scans').delete().eq('pass_id', registrationId);
+        }
         await supabase.from('entry_passes').delete().eq('registration_id', registrationId);
         await supabase.from('payments').delete().eq('registration_id', registrationId);
         await supabase.from('registrations').delete().eq('id', registrationId);
@@ -2638,10 +2663,29 @@ class PreDiwaliDataStore {
   }
 
   public getScansList(staffId?: string): EntryScanLog[] {
-    if (staffId) {
-      return this.scans.filter((s) => s.staff_user_id === staffId);
-    }
-    return [...this.scans];
+    const list = staffId ? this.scans.filter((s) => s.staff_user_id === staffId) : this.scans;
+    return list
+      .filter((scan) => {
+        if (!scan.pass_id) return true;
+        return this.registrations.some(
+          (r) => r.id === scan.pass_id || this.passes.some((p) => p.registration_id === r.id && p.id === scan.pass_id)
+        );
+      })
+      .map((scan) => {
+        const linkedPass = this.passes.find((p) => p.id === scan.pass_id || p.registration_id === scan.pass_id);
+        const linkedReg = this.registrations.find(
+          (r) => r.id === scan.pass_id || (linkedPass && r.id === linkedPass.registration_id)
+        );
+        const rollWithInfix = linkedReg
+          ? formatRollWithCoursePrefix(linkedReg.normalized_roll_number, linkedReg.academic_year)
+          : scan.roll_number;
+        return {
+          ...scan,
+          student_name: scan.student_name || linkedReg?.full_name,
+          roll_number: rollWithInfix,
+          food_preference: scan.food_preference || linkedReg?.food_preference,
+        };
+      });
   }
 
   public getAuditLogs(): AuditLog[] {
@@ -2721,10 +2765,19 @@ class PreDiwaliDataStore {
     if (!isSupabaseConfigured || !supabase) {
       return { success: false, registrationsCount: this.registrations.length, paymentsCount: this.payments.length };
     }
-    if (this.isSupabaseSyncing) {
-      return { success: true, registrationsCount: this.registrations.length, paymentsCount: this.payments.length };
+    if (this.syncPromise) {
+      return this.syncPromise;
     }
-    this.isSupabaseSyncing = true;
+    this.syncPromise = this.doInitSupabase().finally(() => {
+      this.syncPromise = null;
+    });
+    return this.syncPromise;
+  }
+
+  private async doInitSupabase(): Promise<{ success: boolean; registrationsCount: number; paymentsCount: number }> {
+    if (!isSupabaseConfigured || !supabase) {
+      return { success: false, registrationsCount: this.registrations.length, paymentsCount: this.payments.length };
+    }
     try {
       // 1. Fetch Event Settings from Supabase
       const { data: eventData } = await supabase.from('events').select('*').limit(1).maybeSingle();
@@ -2884,17 +2937,45 @@ class PreDiwaliDataStore {
         for (const row of scanRows) {
           if (row.id.toLowerCase().includes('dummy') || row.id.startsWith('scan-seed-')) continue;
           const isDinner = row.reason_code === 'DINNER_APPROVED' || row.reason_code === 'DINNER_COUNTER' || row.scan_result === 'DINNER_APPROVED';
+
+          // Match scan pass_id with fetchedPasses or registrations
+          const linkedPass = fetchedPasses.find((p) => p.id === row.pass_id || p.registration_id === row.pass_id) || this.passes.find((p) => p.id === row.pass_id || p.registration_id === row.pass_id);
+          const linkedReg = this.registrations.find(
+            (r) => r.id === row.pass_id || (linkedPass && r.id === linkedPass.registration_id)
+          );
+
+          // If the student registration was deleted in Supabase, DO NOT keep the orphaned scan!
+          if (row.pass_id && !linkedReg) {
+            continue;
+          }
+
+          const staffUser = this.profiles.find((p) => p.id === row.staff_user_id);
+          const rollWithInfix = linkedReg
+            ? formatRollWithCoursePrefix(linkedReg.normalized_roll_number, linkedReg.academic_year)
+            : undefined;
+
           fetchedScans.push({
             id: row.id,
             event_id: row.event_id,
             pass_id: row.pass_id || undefined,
             staff_user_id: row.staff_user_id,
-            staff_name: isDinner ? 'Dinner Volunteer' : 'Gate Volunteer',
+            staff_name: staffUser?.display_name || (isDinner ? 'Dinner Volunteer' : 'Gate Volunteer'),
             scan_result: isDinner ? 'DINNER_APPROVED' : row.scan_result,
             scanned_at: row.scanned_at || row.created_at || new Date().toISOString(),
+            request_id: row.request_id || undefined,
+            student_name: linkedReg?.full_name,
+            roll_number: rollWithInfix,
+            food_preference: linkedReg?.food_preference,
+            scan_type: isDinner ? 'DINNER' : 'ENTRY',
           });
         }
-        this.scans = fetchedScans;
+        // Authoritative scan sync: only keep scans belonging to existing registrations in the database
+        this.scans = fetchedScans.filter((s) => {
+          if (!s.pass_id) return false;
+          return this.registrations.some(
+            (r) => r.id === s.pass_id || fetchedPasses.some((p) => p.registration_id === r.id && p.id === s.pass_id)
+          );
+        });
       }
 
       // 6. Cross-link Dinner & Gate Redemptions onto passes from scans, local state, and registration notes
@@ -2987,8 +3068,6 @@ class PreDiwaliDataStore {
     } catch (err) {
       console.warn('Supabase sync exception:', err);
       return { success: false, registrationsCount: this.registrations.length, paymentsCount: this.payments.length };
-    } finally {
-      this.isSupabaseSyncing = false;
     }
   }
 

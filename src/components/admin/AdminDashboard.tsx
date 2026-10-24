@@ -53,6 +53,7 @@ import {
 } from '../../types';
 import { dataService } from '../../services/dataService';
 import { formatINR, formatKolkataDateTime, maskContactNumber } from '../../lib/crypto';
+import { formatRollWithCoursePrefix } from '../../lib/validation';
 import collegeLogo from '../../assets/logo.png';
 
 interface AdminDashboardProps {
@@ -215,6 +216,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       alert(`Registration for ${studentName} deleted successfully.`);
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Failed to delete registration');
+    }
+  };
+
+  const handleClearAllScans = async () => {
+    const confirmed = window.confirm(
+      'Are you sure you want to clear all scanner activity logs? This will wipe the test scan records from the database and dashboard.'
+    );
+    if (!confirmed) return;
+    try {
+      await dataService.clearAllScansAdmin(adminUser.id);
+      refreshAll();
+      alert('All scanner activity logs cleared successfully.');
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to clear scanner activity logs');
     }
   };
 
@@ -2924,11 +2939,32 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         {activeTab === 'SCANNER_ACTIVITY' && (
           <div className="space-y-6">
             <div className="p-6 rounded-3xl bg-white border border-[#E8E2D9] shadow-xs space-y-4">
-              <div>
-                <h2 className="text-xl font-black text-[#29243A]">Live Gate Entry Scanner Activity</h2>
-                <p className="text-xs text-[#6B655D]">
-                  Authoritative chronological stream of all gate scans, admissions, and denied duplicate attempts.
-                </p>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-xl font-black text-[#29243A]">Live Gate Entry Scanner Activity</h2>
+                  <p className="text-xs text-[#6B655D]">
+                    Authoritative chronological stream of all gate scans, admissions, and denied duplicate attempts.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={syncAndRefresh}
+                    disabled={isRefreshing}
+                    className="px-3 py-1.5 rounded-xl bg-[#FFF0D9] hover:bg-[#FFE5B4] text-[#6D28D9] text-xs font-bold border border-[#E99A20]/40 flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 text-[#E99A20] ${isRefreshing ? 'animate-spin' : ''}`} />
+                    <span>{isRefreshing ? 'Syncing...' : 'Refresh Scans'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleClearAllScans}
+                    className="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-[#B91C1C] text-xs font-bold border border-rose-200 flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Clear Scan Logs</span>
+                  </button>
+                </div>
               </div>
 
               <div className="overflow-x-auto rounded-2xl border border-[#E8E2D9] scrollbar-thin" style={{ WebkitOverflowScrolling: 'touch' }}>
@@ -2951,26 +2987,37 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         </td>
                       </tr>
                     ) : (
-                      scansList.map((scan) => (
-                        <tr key={scan.id} className="hover:bg-[#FFF0D9]/20 transition-colors">
-                          <td className="p-3.5 text-[#6B655D]">{formatKolkataDateTime(scan.scanned_at)}</td>
-                          <td className="p-3.5 font-bold text-[#29243A]">{scan.staff_name || scan.staff_user_id}</td>
-                          <td className="p-3.5 font-bold text-[#29243A]">{scan.student_name || '—'}</td>
-                          <td className="p-3.5 font-mono font-bold text-[#6D28D9]">{scan.roll_number || '—'}</td>
-                          <td className="p-3.5">
-                            <span
-                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                scan.scan_result === 'ENTRY_APPROVED'
-                                  ? 'bg-emerald-50 text-[#15803D] border border-emerald-200'
-                                  : 'bg-rose-50 text-[#B91C1C] border border-rose-200'
-                              }`}
-                            >
-                              {scan.scan_result}
-                            </span>
-                          </td>
-                          <td className="p-3.5 font-mono text-[10px] text-[#6B655D]">{scan.request_id || '—'}</td>
-                        </tr>
-                      ))
+                      scansList.map((scan) => {
+                        const linkedPass = dataService.getPasses().find((p) => p.id === scan.pass_id || p.registration_id === scan.pass_id);
+                        const linkedReg = registrations.find(
+                          (r) => r.id === scan.pass_id || (linkedPass && r.id === linkedPass.registration_id)
+                        );
+                        const studentName = scan.student_name || linkedReg?.full_name || '—';
+                        const rollNumber = scan.roll_number || (linkedReg ? formatRollWithCoursePrefix(linkedReg.normalized_roll_number, linkedReg.academic_year) : '—');
+
+                        return (
+                          <tr key={scan.id} className="hover:bg-[#FFF0D9]/20 transition-colors">
+                            <td className="p-3.5 text-[#6B655D]">{formatKolkataDateTime(scan.scanned_at)}</td>
+                            <td className="p-3.5 font-bold text-[#29243A]">{scan.staff_name || scan.staff_user_id}</td>
+                            <td className="p-3.5 font-bold text-[#29243A]">{studentName}</td>
+                            <td className="p-3.5 font-mono font-bold text-[#6D28D9]">{rollNumber}</td>
+                            <td className="p-3.5">
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                  scan.scan_result === 'ENTRY_APPROVED' || scan.scan_result === 'DINNER_APPROVED'
+                                    ? scan.scan_result === 'DINNER_APPROVED'
+                                      ? 'bg-purple-50 text-[#6D28D9] border border-purple-200'
+                                      : 'bg-emerald-50 text-[#15803D] border border-emerald-200'
+                                    : 'bg-rose-50 text-[#B91C1C] border border-rose-200'
+                                }`}
+                              >
+                                {scan.scan_result}
+                              </span>
+                            </td>
+                            <td className="p-3.5 font-mono text-[10px] text-[#6B655D]">{scan.request_id || '—'}</td>
+                          </tr>
+                        );
+                      })
                     )}
                   </tbody>
                 </table>
