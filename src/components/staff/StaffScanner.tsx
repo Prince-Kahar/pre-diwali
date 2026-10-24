@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Html5Qrcode } from 'html5-qrcode';
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import {
   Camera,
   CameraOff,
@@ -69,6 +69,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
   const [soundEnabled, setSoundEnabled] = useState(sound.isSoundEnabled());
 
   const scannerRef = useRef<Html5Qrcode | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const cooldownRef = useRef(false);
   const recentlyProcessedTokensRef = useRef<Map<string, number>>(new Map());
 
@@ -149,55 +150,75 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
           // ignore
         }
       } else {
-        // Enable hardware-accelerated native BarcodeDetector API for instant recognition
+        // Dedicated pure QR code decoder (stable, no BarcodeDetector crashes)
         scannerRef.current = new Html5Qrcode('qr-reader-container', {
-          experimentalFeatures: {
-            useBarCodeDetectorIfSupported: true,
-          },
+          formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
           verbose: false,
         });
       }
 
-      await scannerRef.current.start(
-        { facingMode: 'environment' },
-        {
-          fps: 25, // 25 FPS (2.5x faster frame analysis than 10 FPS)
-          qrbox: (viewfinderWidth, viewfinderHeight) => {
-            // Generous scanning area (88% of edge) so QR is recognized instantly from any angle
-            const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-            const qrboxSize = Math.max(220, Math.floor(minEdge * 0.88));
-            return { width: qrboxSize, height: qrboxSize };
-          },
-          aspectRatio: 1.0,
+      const scanConfig = {
+        fps: 15,
+        qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
+          const edge = Math.min(viewfinderWidth, viewfinderHeight);
+          const size = Math.floor(edge * 0.72);
+          return { width: size, height: size };
         },
-        async (decodedText) => {
-          if (cooldownRef.current || isProcessing) return;
-          const cleanToken = decodedText.trim();
-          if (!cleanToken) return;
+        aspectRatio: 1.0,
+      };
 
-          // INSTANT AUDIO BEEP on QR Detection!
-          sound.playScanBeep();
+      const onScanSuccess = async (decodedText: string) => {
+        if (cooldownRef.current || isProcessing) return;
+        const cleanToken = decodedText.trim();
+        if (!cleanToken) return;
 
-          // Prevent accidental instant duplicate auto-scans for the same token
-          const now = Date.now();
-          const lastTime = recentlyProcessedTokensRef.current.get(cleanToken);
-          if (lastTime && now - lastTime < 15000) {
-            return;
-          }
+        // INSTANT AUDIO BEEP on QR Detection!
+        sound.playScanBeep();
 
-          cooldownRef.current = true;
-          recentlyProcessedTokensRef.current.set(cleanToken, now);
-
-          // Stop camera immediately in background so it never scans twice
-          stopCamera();
-
-          // Process the single verified scan
-          await handleProcessToken(cleanToken);
-        },
-        () => {
-          // ignore scan errors/frame skips
+        // Prevent accidental instant duplicate auto-scans for the same token
+        const now = Date.now();
+        const lastTime = recentlyProcessedTokensRef.current.get(cleanToken);
+        if (lastTime && now - lastTime < 15000) {
+          return;
         }
-      );
+
+        cooldownRef.current = true;
+        recentlyProcessedTokensRef.current.set(cleanToken, now);
+
+        // Stop camera cleanly in background so it never scans twice
+        stopCamera();
+
+        // Process the single verified scan
+        await handleProcessToken(cleanToken);
+      };
+
+      try {
+        await scannerRef.current.start(
+          { facingMode: 'environment' },
+          scanConfig,
+          onScanSuccess,
+          () => {}
+        );
+      } catch (camErr) {
+        console.warn('Environment facing mode failed, falling back to default camera:', camErr);
+        const cameras = await Html5Qrcode.getCameras();
+        if (cameras && cameras.length > 0) {
+          const rearCam =
+            cameras.find(
+              (c) =>
+                c.label.toLowerCase().includes('back') ||
+                c.label.toLowerCase().includes('rear')
+            ) || cameras[0];
+          await scannerRef.current.start(
+            rearCam.id,
+            scanConfig,
+            onScanSuccess,
+            () => {}
+          );
+        } else {
+          throw camErr;
+        }
+      }
 
       setIsScanning(true);
       setHasCameraPermission(true);
@@ -282,6 +303,31 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
     await handleProcessToken(clean);
     setManualToken('');
     setShowManualInput(false);
+  };
+
+  const handleFileScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    sound.init();
+    try {
+      setIsProcessing(true);
+      if (!scannerRef.current) {
+        scannerRef.current = new Html5Qrcode('qr-reader-container', {
+          formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+          verbose: false,
+        });
+      }
+      const decodedText = await scannerRef.current.scanFile(file, true);
+      sound.playScanBeep();
+      stopCamera();
+      await handleProcessToken(decodedText);
+    } catch (err) {
+      sound.playErrorBuzz();
+      alert('Could not detect a valid QR code from this image. Please make sure the QR code is clearly visible.');
+    } finally {
+      setIsProcessing(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
   };
 
   const resetForNextScan = () => {
@@ -669,6 +715,23 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
                 </button>
               </>
             )}
+
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="px-4 py-2.5 rounded-xl bg-[#FFF0D9] hover:bg-[#FFE6C2] text-[#29243A] border border-[#E8E2D9] text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+              title="Scan QR from photo or screenshot"
+            >
+              <ImageIcon className="w-4 h-4 text-[#E99A20]" />
+              <span>Upload QR Photo</span>
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleFileScan}
+              className="hidden"
+            />
 
             <button
               type="button"
