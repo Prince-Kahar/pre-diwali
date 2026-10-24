@@ -48,9 +48,9 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   const amountRupees = (feeMinor / 100).toFixed(2);
   const cleanUpiId = (event.payment_upi_id || 'madhavikalathiya2007@sbi').trim();
   const cleanUpiName = (event.payment_upi_name || 'Madhavi Kalathiya').trim();
-  const note = `Pre-Diwali Roll ${registration.normalized_roll_number}`;
-  // Standard NPCI UPI URI specification: pa MUST contain raw '@' without '%40', pn with spaces or '+'
-  const upiIntent = `upi://pay?pa=${cleanUpiId}&pn=${cleanUpiName.replace(/\s+/g, '+')}&am=${amountRupees}&cu=${registration.currency || 'INR'}&tn=${note.replace(/\s+/g, '+')}`;
+  const note = `PreDiwali Roll ${registration.normalized_roll_number || ''}`.trim();
+  // Standard NPCI UPI URI specification: pa MUST contain raw '@' without '%40', pn URL-encoded (%20 for space)
+  const upiIntent = `upi://pay?pa=${cleanUpiId}&pn=${encodeURIComponent(cleanUpiName)}&am=${amountRupees}&cu=${registration.currency || 'INR'}&tn=${encodeURIComponent(note)}`;
 
   useEffect(() => {
     // Generate UPI QR Code image
@@ -359,6 +359,19 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                       >
                         <span>Paytm</span>
                       </button>
+                    </div>
+
+                    {/* Clear Payment Guidance */}
+                    <div className="bg-amber-50/90 border border-amber-300 rounded-xl p-2.5 text-left text-xs space-y-1 mt-2 shadow-2xs">
+                      <p className="font-bold text-amber-900 flex items-center gap-1">
+                        <span>ℹ️ Payment Step Note:</span>
+                      </p>
+                      <p className="text-amber-800 text-[11px] leading-relaxed">
+                        • <strong>Google Pay:</strong> Niche diye <strong>"Next"</strong> button par tap karein, fir Bank select karke <strong>"Pay ₹{amountRupees}"</strong> aayega.
+                      </p>
+                      <p className="text-amber-800 text-[11px] leading-relaxed">
+                        • <strong>PhonePe / Paytm:</strong> Direct 1-tap me <strong>"Proceed to Pay"</strong> open ho jayega.
+                      </p>
                     </div>
                   </div>
                 </div>
