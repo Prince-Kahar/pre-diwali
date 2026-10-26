@@ -43,11 +43,8 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   const [copiedUpi, setCopiedUpi] = useState(false);
   const [existingPayment, setExistingPayment] = useState<PaymentRecord | undefined>();
 
-  // Authoritative amount - ensure ₹300 is displayed and used in UPI intent
-  const feeMinor =
-    registration.expected_amount_minor_units === 25000 || !registration.expected_amount_minor_units
-      ? (event.registration_fee_minor_units || 30000)
-      : registration.expected_amount_minor_units;
+  // Authoritative amount - strictly set auto price to ₹300.00
+  const feeMinor = event.registration_fee_minor_units || 30000;
   const amountRupees = (feeMinor / 100).toFixed(2);
   const cleanUpiId = (event.payment_upi_id || '7862039083@upi').trim();
   const cleanUpiName = (event.payment_upi_name || 'Prince Kahar').trim();
@@ -56,7 +53,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   const upiIntent = `upi://pay?${upiQuery}`;
 
   const downloadQrCode = () => {
-    const targetUrl = paymentQrImage || upiQrDataUrl;
+    const targetUrl = upiQrDataUrl || paymentQrImage;
     if (!targetUrl) return;
     const a = document.createElement('a');
     a.href = targetUrl;
@@ -301,7 +298,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                     <div className="flex flex-col items-center gap-2.5 w-full">
                       <div className="p-3.5 bg-white rounded-2xl border border-[#E8E2D9] shadow-xs">
                         <img
-                          src={paymentQrImage || upiQrDataUrl}
+                          src={upiQrDataUrl || paymentQrImage}
                           alt="Pre-Diwali ₹300 UPI QR Code"
                           className="w-48 h-48 sm:w-56 sm:h-56 rounded-lg object-contain"
                         />
