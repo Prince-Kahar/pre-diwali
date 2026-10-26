@@ -11,7 +11,6 @@ import {
   UploadCloud,
   ImageIcon,
   Trash2,
-  Zap,
   Download,
   X,
 } from 'lucide-react';
@@ -124,24 +123,6 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
     navigator.clipboard.writeText(cleanUpiId);
     setCopiedUpi(true);
     setTimeout(() => setCopiedUpi(false), 2500);
-  };
-
-  const handleTriggerUpi = (targetApp: 'any' | 'bhim' = 'any') => {
-    const isAndroid = /android/i.test(navigator.userAgent);
-    let targetUrl = upiIntent;
-
-    if (isAndroid) {
-      if (targetApp === 'bhim') {
-        // Direct launch into BHIM app via official NPCI package
-        targetUrl = `intent://pay?${upiQuery}#Intent;scheme=upi;package=in.org.npci.upiapp;end;`;
-      } else {
-        // Standard Android Intent syntax recognized by Chrome to open system UPI chooser
-        targetUrl = `intent://pay?${upiQuery}#Intent;scheme=upi;end;`;
-      }
-    }
-
-    // Direct single navigation without event collision
-    window.location.href = targetUrl;
   };
 
   const handleScreenshotSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -348,7 +329,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
 
                   <div className="text-center space-y-1.5 w-full">
                     <p className="text-xs text-[#29243A] font-bold">
-                      Scan or Click Pay Now with Any UPI App
+                      Scan QR Code or Copy UPI ID to Pay
                     </p>
                     <div className="flex items-center justify-center gap-2 text-xs">
                       <span className="text-[#6B655D]">UPI ID:</span>
@@ -382,64 +363,20 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                     </div>
                   </div>
 
-                  {/* PROMINENT PAY NOW BUTTON FOR ALL UPI APPS */}
-                  <div className="w-full space-y-2.5 pt-1">
-                    <button
-                      type="button"
-                      onClick={() => handleTriggerUpi('any')}
-                      className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-[#6D28D9] via-[#8B5CF6] to-[#E99A20] hover:from-[#5B21B6] hover:to-[#D97706] text-white font-black text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer text-center group active:scale-[0.99]"
-                    >
-                      <Zap className="w-4 h-4 fill-current text-amber-300 animate-pulse group-hover:scale-110 transition-transform" />
-                      <span>⚡ Pay Now (Open Any UPI App)</span>
-                    </button>
-
-                    {/* Dedicated BHIM & Gallery Scan Buttons */}
-                    <div className="grid grid-cols-2 gap-2 w-full">
-                      <button
-                        type="button"
-                        onClick={() => handleTriggerUpi('bhim')}
-                        className="py-2.5 px-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-colors shadow-2xs"
-                        title="Open in BHIM UPI App"
-                      >
-                        <span>🇮🇳 Open in BHIM</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={downloadQrCode}
-                        className="py-2.5 px-2 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-colors shadow-2xs"
-                        title="Save clean QR with ₹300 preset to scan from BHIM gallery"
-                      >
-                        <Download className="w-3.5 h-3.5 text-amber-700" />
-                        <span>Scan via Gallery (₹300)</span>
-                      </button>
-                    </div>
-
-                    {/* Supported Apps Badges */}
-                    <div className="p-2.5 rounded-xl bg-purple-50/70 border border-purple-200/60 text-center">
-                      <p className="text-[10px] font-bold text-[#6D28D9] uppercase tracking-wider mb-1">
-                        Supported on 25+ UPI Apps
-                      </p>
-                      <p className="text-[10px] text-[#4C1D95] font-medium leading-relaxed">
-                        PhonePe • Google Pay • Paytm • BHIM • Amazon Pay • CRED • WhatsApp Pay • super.money • Navi • Groww • Jupiter • Fi • SBI YONO • iMobile • PayZapp • Axis Pay & all UPI apps
-                      </p>
-                    </div>
-
-                    {/* Helpful Payment Instructions */}
-                    <div className="bg-amber-50/90 border border-amber-300 rounded-xl p-2.5 text-left text-xs space-y-1 shadow-2xs">
+                  {/* Clean Payment Instructions without App Redirect */}
+                  <div className="w-full space-y-2 pt-1">
+                    <div className="bg-amber-50/90 border border-amber-300 rounded-xl p-3 text-left text-xs space-y-1.5 shadow-2xs">
                       <p className="font-bold text-amber-900 flex items-center gap-1 text-[11px]">
-                        <span>ℹ️ Quick Payment Tips:</span>
+                        <span>ℹ️ How to Complete Payment:</span>
                       </p>
-                      <p className="text-amber-800 text-[10px] leading-relaxed">
-                        • <strong>PhonePe / GPay / Paytm:</strong> Tap <strong>"Pay Now"</strong> above to pay ₹{amountRupees} with 1-tap.
+                      <p className="text-amber-800 text-[11px] leading-relaxed">
+                        1. Open any UPI App on your phone (Google Pay, PhonePe, Paytm, BHIM, CRED, Amazon Pay, etc.).
                       </p>
-                      <p className="text-amber-800 text-[10px] leading-relaxed">
-                        • <strong>BHIM App (If redirect is blocked by your device):</strong> Tap <strong>"Scan via Gallery (₹300)"</strong> (saves QR with ₹300 pre-set) → Open BHIM → Tap <strong>Scan</strong> → Tap <strong>Gallery</strong> → Select saved QR. ₹{amountRupees} is pre-filled automatically!
+                      <p className="text-amber-800 text-[11px] leading-relaxed">
+                        2. <strong>Scan the QR code above</strong> (or copy the UPI ID <span className="font-mono font-bold select-all text-[#6D28D9]">{cleanUpiId}</span>) to pay the fee of <strong>₹{amountRupees}</strong>.
                       </p>
-                      <p className="text-amber-800 text-[10px] leading-relaxed">
-                        • <strong>Or in BHIM:</strong> Tap <strong>Send</strong> → enter <span className="font-mono font-bold select-all">{cleanUpiId}</span> → enter ₹{amountRupees}.
-                      </p>
-                      <p className="text-amber-800 text-[10px] leading-relaxed">
-                        • <strong>After Payment:</strong> Enter your 12-digit UTR/Ref ID and attach the payment screenshot on the right.
+                      <p className="text-amber-800 text-[11px] leading-relaxed">
+                        3. After payment is successful, enter your <strong>12-digit UTR / Reference ID</strong> and attach your payment screenshot in the form on the right.
                       </p>
                     </div>
                   </div>
