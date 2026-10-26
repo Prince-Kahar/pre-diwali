@@ -2883,7 +2883,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </thead>
                   <tbody className="divide-y divide-[#E8E2D9] bg-white">
                     {registrations
-                      .filter((r) => !!r.pass)
+                      .filter((r) => r.payment_status === 'PAID' && !!r.pass)
                       .map((r) => (
                         <tr key={r.pass!.id} className="hover:bg-[#FFF0D9]/20 transition-colors">
                           <td className="p-3.5 font-bold text-[#29243A]">{r.full_name}</td>

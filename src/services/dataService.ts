@@ -209,11 +209,28 @@ class PreDiwaliDataStore {
 
       const ps = localStorage.getItem(STORAGE_KEYS.PASSES);
       if (ps) {
-        this.passes = JSON.parse(ps).filter(
-          (item: EntryPass) =>
-            !item.id.startsWith('pass-seed-') &&
-            !item.id.toLowerCase().includes('dummy')
-        );
+        const rawPasses: EntryPass[] = JSON.parse(ps);
+        const paidRegIds = new Set(this.registrations.filter((r) => r.payment_status === 'PAID').map((r) => r.id));
+        const seenRegIds = new Set<string>();
+        this.passes = rawPasses
+          .filter(
+            (item: EntryPass) =>
+              !item.id.startsWith('pass-seed-') &&
+              !item.id.toLowerCase().includes('dummy') &&
+              paidRegIds.has(item.registration_id)
+          )
+          .sort((a, b) => {
+            const aUsed = a.status === 'USED' || Boolean(a.redeemed_at);
+            const bUsed = b.status === 'USED' || Boolean(b.redeemed_at);
+            if (aUsed && !bUsed) return -1;
+            if (!aUsed && bUsed) return 1;
+            return new Date(b.issued_at || 0).getTime() - new Date(a.issued_at || 0).getTime();
+          })
+          .filter((item: EntryPass) => {
+            if (seenRegIds.has(item.registration_id)) return false;
+            seenRegIds.add(item.registration_id);
+            return true;
+          });
       }
 
       const s = localStorage.getItem(STORAGE_KEYS.SCANS);
@@ -1276,9 +1293,26 @@ class PreDiwaliDataStore {
     }
 
     // Check if pass already exists (VALID or USED) - strict one-time pass guarantee
-    const existing = this.passes.find(
+    let existing = this.passes.find(
       (p) => p.registration_id === registrationId && (p.status === 'VALID' || p.status === 'USED')
     );
+    if (!existing && isSupabaseConfigured && supabase) {
+      try {
+        const { data: dbPass } = await supabase
+          .from('entry_passes')
+          .select('*')
+          .eq('registration_id', registrationId)
+          .maybeSingle();
+        if (dbPass) {
+          existing = dbPass as EntryPass;
+          if (!this.passes.some((p) => p.id === existing!.id)) {
+            this.passes.push(existing);
+          }
+        }
+      } catch (checkErr) {
+        console.warn('issueEntryPass cloud pass check notice:', checkErr);
+      }
+    }
     if (existing) {
       return existing;
     }
@@ -1319,13 +1353,15 @@ class PreDiwaliDataStore {
   }
 
   public getEntryPassByRegistration(registrationId: string): (EntryPass & { raw_token?: string }) | undefined {
+    const reg = this.registrations.find((r) => r.id === registrationId);
+    if (!reg || reg.payment_status !== 'PAID') return undefined;
+
     let pass = this.passes.find((p) => p.registration_id === registrationId);
     if (!pass) return undefined;
     const raw_token = this.clientTokens[registrationId];
     pass = { ...pass, raw_token };
 
     // Authoritative check against registration internal_notes
-    const reg = this.registrations.find((r) => r.id === registrationId);
     if (reg?.internal_notes) {
       try {
         const notes =
@@ -1479,7 +1515,8 @@ class PreDiwaliDataStore {
   }
 
   public getPasses(): EntryPass[] {
-    return [...this.passes];
+    const paidRegIds = new Set(this.registrations.filter((r) => r.payment_status === 'PAID').map((r) => r.id));
+    return this.passes.filter((p) => paidRegIds.has(p.registration_id));
   }
 
   public async clearAllScansAdmin(adminId: string): Promise<boolean> {
@@ -2578,8 +2615,12 @@ class PreDiwaliDataStore {
       (r) => r.payment_status === 'FAILED' || r.payment_status === 'REJECTED'
     ).length;
 
-    const validPassesIssued = this.passes.filter((p) => p.status === 'VALID' || p.status === 'USED').length;
+    const paidRegIds = new Set(this.registrations.filter((r) => r.payment_status === 'PAID').map((r) => r.id));
+    const validPassesIssued = this.passes.filter(
+      (p) => paidRegIds.has(p.registration_id) && (p.status === 'VALID' || p.status === 'USED')
+    ).length;
     const totalEntries = this.passes.filter((p) => {
+      if (!paidRegIds.has(p.registration_id)) return false;
       if (p.status === 'USED' || Boolean(p.redeemed_at)) return true;
       const reg = this.registrations.find((r) => r.id === p.registration_id);
       if (reg?.internal_notes?.includes('gate_entry_redeemed_at')) return true;
@@ -2617,15 +2658,18 @@ class PreDiwaliDataStore {
   public getAllRegistrations(): Array<Registration & { payment?: PaymentRecord; pass?: EntryPass }> {
     return this.registrations.map((reg) => {
       const payment = this.getPaymentForRegistration(reg.id);
-      let pass = this.passes.find((p) => p.registration_id === reg.id);
-      if (!pass && reg.payment_status === 'PAID') {
-        pass = {
-          id: `pass-${reg.id}`,
-          registration_id: reg.id,
-          token_hash: '',
-          status: 'VALID',
-          issued_at: reg.created_at,
-        };
+      let pass: EntryPass | undefined = undefined;
+      if (reg.payment_status === 'PAID') {
+        pass = this.passes.find((p) => p.registration_id === reg.id);
+        if (!pass) {
+          pass = {
+            id: `pass-${reg.id}`,
+            registration_id: reg.id,
+            token_hash: '',
+            status: 'VALID',
+            issued_at: reg.created_at,
+          };
+        }
       }
       if (pass) {
         pass = { ...pass };
@@ -3058,8 +3102,58 @@ class PreDiwaliDataStore {
         }
       }
 
-      // Authoritative pass list: keep passes for existing registrations
-      this.passes = fetchedPasses.filter((p) => this.registrations.some((r) => r.id === p.registration_id));
+      // Authoritative pass list: keep strictly 1 pass per verified PAID registration
+      const paidRegMap = new Map<string, Registration>();
+      for (const reg of this.registrations) {
+        if (reg.payment_status === 'PAID') {
+          paidRegMap.set(reg.id, reg);
+        }
+      }
+
+      // Group passes by registration_id and deduplicate (prefer USED / redeemed or latest issued)
+      const passesByReg = new Map<string, EntryPass[]>();
+      const surplusPassIds: string[] = [];
+
+      for (const p of fetchedPasses as EntryPass[]) {
+        if (!paidRegMap.has(p.registration_id)) {
+          // Pass does not belong to a verified PAID registration -> mark for cleanup
+          surplusPassIds.push(p.id);
+          continue;
+        }
+        if (!passesByReg.has(p.registration_id)) {
+          passesByReg.set(p.registration_id, []);
+        }
+        passesByReg.get(p.registration_id)!.push(p);
+      }
+
+      const deduplicatedPasses: EntryPass[] = [];
+      passesByReg.forEach((regPasses) => {
+        regPasses.sort((a, b) => {
+          const aUsed = a.status === 'USED' || Boolean(a.redeemed_at);
+          const bUsed = b.status === 'USED' || Boolean(b.redeemed_at);
+          if (aUsed && !bUsed) return -1;
+          if (!aUsed && bUsed) return 1;
+          return new Date(b.issued_at || 0).getTime() - new Date(a.issued_at || 0).getTime();
+        });
+        deduplicatedPasses.push(regPasses[0]);
+        for (let i = 1; i < regPasses.length; i++) {
+          surplusPassIds.push(regPasses[i].id);
+        }
+      });
+
+      this.passes = deduplicatedPasses;
+
+      // Clean up surplus duplicate pass rows from cloud database asynchronously
+      if (surplusPassIds.length > 0 && isSupabaseConfigured && supabase) {
+        try {
+          for (let i = 0; i < surplusPassIds.length; i += 50) {
+            const batch = surplusPassIds.slice(i, i + 50);
+            await supabase.from('entry_passes').delete().in('id', batch);
+          }
+        } catch (cleanErr) {
+          console.warn('Surplus duplicate passes cleanup notice:', cleanErr);
+        }
+      }
 
       // Auto-Heal: Ensure every PAID student has a valid entry pass
       for (const reg of this.registrations) {

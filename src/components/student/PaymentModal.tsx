@@ -92,7 +92,9 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
 
   // Periodic auto-detection: as soon as payment is approved, immediately open QR Pass
   useEffect(() => {
+    let isHandled = false;
     const checkApproval = async () => {
+      if (isHandled) return;
       try {
         let reg = dataService.getRegistrationById(registration.id);
         if (!reg || reg.payment_status !== 'PAID') {
@@ -100,6 +102,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
           reg = dataService.getRegistrationById(registration.id);
         }
         if (reg && reg.payment_status === 'PAID') {
+          isHandled = true;
           await dataService.issueEntryPass(reg.id);
           onPaymentSuccess();
         }
