@@ -2789,7 +2789,187 @@ class PreDiwaliDataStore {
   }
 
   public getAuditLogs(): AuditLog[] {
-    return [...this.auditLogs];
+    const unifiedLogs: AuditLog[] = [];
+    const seenLogKeys = new Set<string>();
+
+    // 1. Explicit Administrative & System Audit Logs (from Supabase + local storage)
+    for (const log of this.auditLogs) {
+      if (!log.created_at) continue;
+      const key = `${log.action}::${log.target_type}::${log.target_id || ''}::${log.created_at.slice(0, 16)}`;
+      if (!seenLogKeys.has(key)) {
+        seenLogKeys.add(key);
+        unifiedLogs.push(log);
+      }
+    }
+
+    // 2. Synthesize Historical & Live Events for Every Student Registration ("ab tak ki aur aage ki bhi")
+    for (const reg of this.registrations) {
+      if (!reg.created_at) continue;
+      const formattedRoll = formatRollWithCoursePrefix(reg.normalized_roll_number, reg.academic_year);
+      const regKey = `STUDENT_REGISTRATION::registration::${formattedRoll}::${reg.created_at.slice(0, 16)}`;
+      if (!seenLogKeys.has(regKey)) {
+        seenLogKeys.add(regKey);
+        unifiedLogs.push({
+          id: `synth-reg-${reg.id}`,
+          actor_name: reg.full_name,
+          event_id: reg.event_id || this.event.id,
+          action: 'STUDENT_REGISTRATION',
+          target_type: 'registration',
+          target_id: formattedRoll,
+          reason: `Student registered for ${reg.academic_year} | Meal: ${reg.food_preference} Dinner | Contact: ${reg.contact_number}${reg.performance_talent ? ` | Talent: ${reg.performance_talent}` : ''}`,
+          metadata: {
+            registration_id: reg.id,
+            roll_number: reg.normalized_roll_number,
+            academic_year: reg.academic_year,
+            food_preference: reg.food_preference,
+            contact_number: reg.contact_number,
+          },
+          created_at: reg.created_at,
+        });
+      }
+    }
+
+    // 3. Synthesize Historical & Live Payment Submissions & Verifications
+    for (const pay of this.payments) {
+      const linkedReg = this.registrations.find((r) => r.id === pay.registration_id);
+      const studentName = linkedReg?.full_name || 'Student';
+      const formattedRoll = linkedReg
+        ? formatRollWithCoursePrefix(linkedReg.normalized_roll_number, linkedReg.academic_year)
+        : pay.registration_id;
+      const amountRupees = (pay.expected_amount_minor_units / 100).toFixed(0);
+
+      // 3a. Payment Submission Event
+      if (pay.created_at) {
+        const subKey = `PAYMENT_SUBMITTED::payment::${pay.transaction_reference || pay.id}::${pay.created_at.slice(0, 16)}`;
+        if (!seenLogKeys.has(subKey)) {
+          seenLogKeys.add(subKey);
+          unifiedLogs.push({
+            id: `synth-pay-sub-${pay.id}`,
+            actor_name: studentName,
+            event_id: this.event.id,
+            action: 'PAYMENT_SUBMITTED',
+            target_type: 'payment',
+            target_id: pay.transaction_reference ? `UTR: ${pay.transaction_reference}` : formattedRoll,
+            reason: `Submitted ₹${amountRupees} payment claim (${pay.provider || 'UPI'})${pay.transaction_reference ? ` with UTR ${pay.transaction_reference}` : ''} for Roll ${formattedRoll}`,
+            metadata: {
+              payment_id: pay.id,
+              registration_id: pay.registration_id,
+              transaction_reference: pay.transaction_reference,
+              expected_amount_minor_units: pay.expected_amount_minor_units,
+              screenshot_url: pay.screenshot_url,
+            },
+            created_at: pay.created_at,
+          });
+        }
+      }
+
+      // 3b. Payment Verified / Approved Event
+      if (pay.status === 'PAID' || linkedReg?.payment_status === 'PAID') {
+        const verifyTimestamp = pay.verified_at || pay.updated_at || pay.created_at;
+        const verKey = `PAYMENT_VERIFIED::payment::${formattedRoll}::${verifyTimestamp.slice(0, 16)}`;
+        if (!seenLogKeys.has(verKey)) {
+          seenLogKeys.add(verKey);
+          unifiedLogs.push({
+            id: `synth-pay-ver-${pay.id}`,
+            actor_name: pay.verified_by_name || pay.verified_by || 'Admin',
+            event_id: this.event.id,
+            action: 'PAYMENT_VERIFIED',
+            target_type: 'payment',
+            target_id: formattedRoll,
+            reason: `Payment verified & approved (₹${amountRupees}). Official QR Pass issued for ${studentName} (${formattedRoll})${pay.transaction_reference ? ` [UTR: ${pay.transaction_reference}]` : ''}`,
+            metadata: {
+              payment_id: pay.id,
+              registration_id: pay.registration_id,
+              transaction_reference: pay.transaction_reference,
+            },
+            created_at: verifyTimestamp,
+          });
+        }
+      } else if (pay.status === 'REJECTED') {
+        // 3c. Payment Rejected Event
+        const rejTimestamp = pay.updated_at || pay.created_at;
+        const rejKey = `PAYMENT_REJECTED::payment::${pay.transaction_reference || pay.id}::${rejTimestamp.slice(0, 16)}`;
+        if (!seenLogKeys.has(rejKey)) {
+          seenLogKeys.add(rejKey);
+          unifiedLogs.push({
+            id: `synth-pay-rej-${pay.id}`,
+            actor_name: 'Admin',
+            event_id: this.event.id,
+            action: 'PAYMENT_REJECTED',
+            target_type: 'payment',
+            target_id: pay.transaction_reference ? `UTR: ${pay.transaction_reference}` : formattedRoll,
+            reason: `Payment claim rejected for ${studentName} (${formattedRoll}). ${pay.rejection_reason ? `Reason: ${pay.rejection_reason}` : 'UTR reference mismatch or invalid proof.'}`,
+            metadata: {
+              payment_id: pay.id,
+              registration_id: pay.registration_id,
+              rejection_reason: pay.rejection_reason,
+            },
+            created_at: rejTimestamp,
+          });
+        }
+      }
+    }
+
+    // 4. Synthesize Gate Check-ins & Dinner Scans
+    for (const scan of this.scans) {
+      if (!scan.scanned_at) continue;
+      const isDinner = scan.scan_type === 'DINNER' || scan.scan_result === 'DINNER_APPROVED' || scan.reason_code === 'DINNER_APPROVED';
+      const actionName = isDinner
+        ? 'DINNER_MEAL_CLAIMED'
+        : (scan.scan_result === 'ENTRY_APPROVED' ? 'GATE_ENTRY_APPROVED' : (scan.scan_result || 'GATE_ENTRY_SCAN'));
+      const scanKey = `${actionName}::${isDinner ? 'food_coupon' : 'entry_pass'}::${scan.roll_number || scan.pass_id || ''}::${scan.scanned_at.slice(0, 16)}`;
+
+      if (!seenLogKeys.has(scanKey)) {
+        seenLogKeys.add(scanKey);
+        unifiedLogs.push({
+          id: `synth-scan-${scan.id}`,
+          actor_name: scan.staff_name || (isDinner ? 'Dinner Volunteer' : 'Gate Volunteer'),
+          event_id: scan.event_id || this.event.id,
+          action: actionName,
+          target_type: isDinner ? 'food_coupon' : 'entry_pass',
+          target_id: scan.roll_number || 'Pass Scan',
+          reason: isDinner
+            ? `Dinner meal claimed by ${scan.student_name || 'Student'} (${scan.food_preference || 'Regular'} Dinner)`
+            : `Gate check-in recorded for ${scan.student_name || 'Student'} (${scan.roll_number || 'Roll'}). Scan Result: ${scan.scan_result}`,
+          metadata: {
+            scan_id: scan.id,
+            roll_number: scan.roll_number,
+            student_name: scan.student_name,
+            scan_result: scan.scan_result,
+          },
+          created_at: scan.scanned_at,
+        });
+      }
+    }
+
+    // 5. Synthesize Pricing History Adjustments
+    for (const ph of this.pricingHistory) {
+      if (!ph.created_at) continue;
+      const priceKey = `PRICE_ADJUSTED::pricing::${ph.id}::${ph.created_at.slice(0, 16)}`;
+      if (!seenLogKeys.has(priceKey)) {
+        seenLogKeys.add(priceKey);
+        unifiedLogs.push({
+          id: `synth-price-${ph.id}`,
+          actor_name: ph.changed_by_name || 'System Admin',
+          event_id: ph.event_id || this.event.id,
+          action: 'PRICE_ADJUSTED',
+          target_type: 'pricing',
+          target_id: `₹${(ph.new_fee_minor_units / 100).toFixed(0)}`,
+          reason: `Registration price modified from ₹${(ph.previous_fee_minor_units / 100).toFixed(0)} to ₹${(ph.new_fee_minor_units / 100).toFixed(0)}. Justification: ${ph.change_reason || 'Administrative pricing adjustment'}`,
+          metadata: {
+            pricing_id: ph.id,
+            previous_fee: ph.previous_fee_minor_units,
+            new_fee: ph.new_fee_minor_units,
+          },
+          created_at: ph.created_at,
+        });
+      }
+    }
+
+    // 6. Chronologically Sort: Newest First
+    unifiedLogs.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+
+    return unifiedLogs;
   }
 
   private addAuditLog(
@@ -2801,8 +2981,8 @@ class PreDiwaliDataStore {
     metadata?: Record<string, unknown>
   ) {
     const actor = this.profiles.find((p) => p.id === actorId);
-    this.auditLogs.unshift({
-      id: `audit-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+    const newLog: AuditLog = {
+      id: generateUUID(),
       actor_user_id: actorId,
       actor_name: actor?.display_name || 'System / Admin',
       event_id: this.event.id,
@@ -2812,7 +2992,31 @@ class PreDiwaliDataStore {
       reason,
       metadata,
       created_at: new Date().toISOString(),
-    });
+    };
+    this.auditLogs.unshift(newLog);
+    this.persist();
+
+    // Asynchronously insert into Supabase audit_logs table
+    if (isSupabaseConfigured && supabase) {
+      (async () => {
+        try {
+          const { error } = await supabase.from('audit_logs').insert({
+            id: newLog.id,
+            actor_user_id: actorId && actorId.length === 36 ? actorId : null,
+            event_id: this.event.id && this.event.id.length === 36 ? this.event.id : null,
+            action: newLog.action,
+            target_type: newLog.target_type,
+            target_id: newLog.target_id || null,
+            reason: newLog.reason || null,
+            metadata: newLog.metadata || {},
+            created_at: newLog.created_at,
+          });
+          if (error) console.warn('Supabase audit_log insert error:', error.message);
+        } catch (err: unknown) {
+          console.warn('Supabase audit_log insert exception:', err);
+        }
+      })();
+    }
   }
 
   public async uploadPaymentScreenshot(
@@ -3078,6 +3282,32 @@ class PreDiwaliDataStore {
         });
       }
 
+      // 5b. Fetch Cloud Audit Logs from Supabase
+      try {
+        const { data: auditRows } = await supabase.from('audit_logs').select('*');
+        if (auditRows && auditRows.length > 0) {
+          for (const row of auditRows) {
+            if (!this.auditLogs.some((a) => a.id === row.id)) {
+              const staffUser = this.profiles.find((p) => p.id === row.actor_user_id);
+              this.auditLogs.push({
+                id: row.id,
+                actor_user_id: row.actor_user_id,
+                actor_name: row.actor_name || staffUser?.display_name || 'System / Admin',
+                event_id: row.event_id,
+                action: row.action,
+                target_type: row.target_type,
+                target_id: row.target_id,
+                reason: row.reason,
+                metadata: row.metadata,
+                created_at: row.created_at || new Date().toISOString(),
+              });
+            }
+          }
+        }
+      } catch (auditFetchErr) {
+        console.warn('Supabase audit_logs sync notice:', auditFetchErr);
+      }
+
       // 6. Cross-link Dinner & Gate Redemptions onto passes from scans, local state, and registration notes
       for (const pass of fetchedPasses) {
         // Check existing local pass state to guarantee no reset on page refresh
@@ -3240,6 +3470,8 @@ class PreDiwaliDataStore {
         .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, debouncedSyncAndCallback)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'entry_passes' }, debouncedSyncAndCallback)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'entry_scans' }, debouncedSyncAndCallback)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'audit_logs' }, debouncedSyncAndCallback)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'pricing_history' }, debouncedSyncAndCallback)
         .subscribe();
 
       return () => {

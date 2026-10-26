@@ -101,6 +101,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [pricingHistory, setPricingHistory] = useState<PricingHistoryRecord[]>(dataService.getPricingHistory());
   const [scansList, setScansList] = useState<EntryScanLog[]>(dataService.getScansList());
 
+  // Audit Logs Filter & Search State
+  const [auditSearchQuery, setAuditSearchQuery] = useState('');
+  const [auditActionFilter, setAuditActionFilter] = useState<'ALL' | 'REGISTRATION' | 'PAYMENT' | 'SCAN' | 'ADMIN'>('ALL');
+
   // Filters & Sorting for registrations table
   const [searchTerm, setSearchTerm] = useState('');
   const [yearFilter, setYearFilter] = useState<'ALL' | AcademicYear | 'FY' | 'SY'>('ALL');
@@ -955,6 +959,184 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
     return true;
   });
+
+  // Filtered audit logs computation
+  const filteredAuditLogs = auditLogs.filter((log) => {
+    const query = auditSearchQuery.toLowerCase().trim();
+    if (query) {
+      const matchAction = log.action.toLowerCase().includes(query);
+      const matchActor = (log.actor_name || '').toLowerCase().includes(query);
+      const matchTarget = (log.target_id || '').toLowerCase().includes(query) || (log.target_type || '').toLowerCase().includes(query);
+      const matchReason = (log.reason || '').toLowerCase().includes(query);
+      if (!matchAction && !matchActor && !matchTarget && !matchReason) {
+        return false;
+      }
+    }
+
+    if (auditActionFilter === 'REGISTRATION') {
+      return log.action.includes('REGISTRATION') || log.target_type === 'registration';
+    }
+    if (auditActionFilter === 'PAYMENT') {
+      return log.action.includes('PAYMENT') || log.target_type === 'payment';
+    }
+    if (auditActionFilter === 'SCAN') {
+      return (
+        log.action.includes('SCAN') ||
+        log.action.includes('GATE') ||
+        log.action.includes('DINNER') ||
+        log.action.includes('PASS') ||
+        log.target_type === 'entry_pass' ||
+        log.target_type === 'food_coupon'
+      );
+    }
+    if (auditActionFilter === 'ADMIN') {
+      return (
+        log.action.includes('SETTINGS') ||
+        log.action.includes('STAFF') ||
+        log.action.includes('PRICE') ||
+        log.action.includes('DELETE') ||
+        log.action.includes('REACTIVATE') ||
+        log.action.includes('UPDATE') ||
+        log.action.includes('REVOKE') ||
+        log.action.includes('REISSUE')
+      );
+    }
+    return true;
+  });
+
+  const regAuditCount = auditLogs.filter((l) => l.action.includes('REGISTRATION') || l.target_type === 'registration').length;
+  const payAuditCount = auditLogs.filter((l) => l.action.includes('PAYMENT') || l.target_type === 'payment').length;
+  const scanAuditCount = auditLogs.filter((l) =>
+    l.action.includes('SCAN') ||
+    l.action.includes('GATE') ||
+    l.action.includes('DINNER') ||
+    l.action.includes('PASS') ||
+    l.target_type === 'entry_pass' ||
+    l.target_type === 'food_coupon'
+  ).length;
+  const adminAuditCount = auditLogs.filter((l) =>
+    l.action.includes('SETTINGS') ||
+    l.action.includes('STAFF') ||
+    l.action.includes('PRICE') ||
+    l.action.includes('DELETE') ||
+    l.action.includes('REACTIVATE') ||
+    l.action.includes('UPDATE') ||
+    l.action.includes('REVOKE') ||
+    l.action.includes('REISSUE')
+  ).length;
+
+  const exportAuditLogsExcel = () => {
+    const rowsHtml = filteredAuditLogs
+      .map((log, idx) => {
+        const logTime = formatKolkataDateTime(log.created_at);
+        const safeReason = (log.reason || '—')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;');
+        return `
+        <tr>
+          <td style="text-align: center; font-weight: bold;">${idx + 1}</td>
+          <td>${logTime}</td>
+          <td style="font-weight: bold; color: #6D28D9;">${log.actor_name || 'System Admin'}</td>
+          <td style="font-family: monospace; font-weight: bold;">${log.action}</td>
+          <td style="font-weight: bold;">${log.target_type}${log.target_id ? ` (${log.target_id})` : ''}</td>
+          <td>${safeReason}</td>
+        </tr>
+      `;
+      })
+      .join('');
+
+    const excelTemplate = `
+      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+      <head>
+        <meta http-equiv="content-type" content="application/vnd.ms-excel; charset=UTF-8"/>
+        <style>
+          table { border-collapse: collapse; width: 100%; font-family: Arial, sans-serif; }
+          th { background-color: #FFF0D9; color: #29243A; border: 1px solid #D6D3CD; padding: 8px 12px; font-weight: bold; font-size: 12px; }
+          td { border: 1px solid #E8E2D9; padding: 6px 12px; font-size: 11px; }
+        </style>
+      </head>
+      <body>
+        <h2 style="color: #6D28D9;">Pre-Diwali Celebration 2026 — Complete Event & Administrative Audit Trail</h2>
+        <p><strong>Generated At:</strong> ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} IST | <strong>Total Event Entries:</strong> ${filteredAuditLogs.length}</p>
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Timestamp (IST)</th>
+              <th>Actor</th>
+              <th>Action Code</th>
+              <th>Target Entity</th>
+              <th>Details / Reason</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml}
+          </tbody>
+        </table>
+      </body>
+      </html>
+    `;
+
+    const blob = new Blob([excelTemplate], { type: 'application/vnd.ms-excel' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `prediwali_audit_trail_${Date.now()}.xls`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const getActionBadge = (action: string) => {
+    if (action.includes('VERIFIED') || action.includes('APPROVED') || action.includes('CLAIMED')) {
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+          <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
+          <span>{action}</span>
+        </span>
+      );
+    }
+    if (action.includes('REGISTRATION')) {
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-800 border border-indigo-200">
+          <Users className="w-3 h-3 text-indigo-600 shrink-0" />
+          <span>{action}</span>
+        </span>
+      );
+    }
+    if (action.includes('SUBMITTED') || action.includes('PENDING')) {
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-900 border border-amber-200">
+          <CreditCard className="w-3 h-3 text-amber-700 shrink-0" />
+          <span>{action}</span>
+        </span>
+      );
+    }
+    if (action.includes('REJECTED') || action.includes('DELETE') || action.includes('REVOKE') || action.includes('CANCEL')) {
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-800 border border-rose-200">
+          <XCircle className="w-3 h-3 text-rose-600 shrink-0" />
+          <span>{action}</span>
+        </span>
+      );
+    }
+    if (action.includes('GATE') || action.includes('SCAN') || action.includes('DINNER')) {
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-teal-50 text-teal-800 border border-teal-200">
+          <QrCode className="w-3 h-3 text-teal-600 shrink-0" />
+          <span>{action}</span>
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-50 text-[#6D28D9] border border-purple-200">
+        <Settings className="w-3 h-3 text-[#6D28D9] shrink-0" />
+        <span>{action}</span>
+      </span>
+    );
+  };
 
   return (
     <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 min-h-[82vh] w-full max-w-full min-w-0 bg-[#FFFCF5]">
@@ -3192,41 +3374,180 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         {/* ----------------- 10. AUDIT LOGS TAB ----------------- */}
         {activeTab === 'AUDIT' && (
           <div className="space-y-6">
-            <div className="p-6 rounded-3xl bg-white border border-[#E8E2D9] shadow-xs space-y-4">
-              <div>
-                <h2 className="text-xl font-black text-[#29243A]">Administrative Audit Trail</h2>
-                <p className="text-xs text-[#6B655D]">
-                  Append-only immutable record of administrative actions, pricing modifications, payment verifications, and pass reissues.
-                </p>
+            <div className="p-4 sm:p-6 rounded-3xl bg-white border border-[#E8E2D9] shadow-xs space-y-5">
+              {/* Top Header */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#E8E2D9]">
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h2 className="text-xl font-black text-[#29243A]">System & Administrative Audit Trail</h2>
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 shadow-2xs">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                      <span>Live Realtime Active</span>
+                    </span>
+                  </div>
+                  <p className="text-xs text-[#6B655D] mt-1">
+                    Complete chronological record of all student registrations, payment submissions, verifications, rejections, gate scans, dinner coupon claims, and administrative actions.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={exportAuditLogsExcel}
+                  className="px-3.5 py-2 rounded-xl bg-white hover:bg-[#FFF0D9] text-[#29243A] border border-[#E8E2D9] text-xs font-bold flex items-center gap-2 shadow-2xs transition-colors shrink-0 cursor-pointer self-start sm:self-auto"
+                >
+                  <FileSpreadsheet className="w-4 h-4 text-[#15803D]" />
+                  <span>Export Audit Trail (Excel)</span>
+                </button>
               </div>
 
-              <div className="overflow-x-auto rounded-2xl border border-[#E8E2D9] scrollbar-thin" style={{ WebkitOverflowScrolling: 'touch' }}>
-                <table className="w-full min-w-[700px] text-left text-xs text-[#29243A]">
-                  <thead className="bg-[#FFF0D9] text-[#29243A] font-bold border-b border-[#E8E2D9]">
+              {/* Filter Pills & Search Bar */}
+              <div className="space-y-3">
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <div className="relative flex-1">
+                    <Search className="w-4 h-4 text-[#6B655D] absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      placeholder="Search by student name, roll number, UTR, action, actor, or reason..."
+                      value={auditSearchQuery}
+                      onChange={(e) => setAuditSearchQuery(e.target.value)}
+                      className="w-full pl-9 pr-8 py-2 rounded-xl border border-[#E8E2D9] text-xs text-[#29243A] focus:outline-none focus:border-[#6D28D9] bg-white shadow-2xs"
+                    />
+                    {auditSearchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setAuditSearchQuery('')}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-[#6B655D] hover:text-[#29243A] cursor-pointer"
+                        title="Clear search"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Category Filter Pills */}
+                <div className="flex items-center gap-1.5 flex-wrap text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setAuditActionFilter('ALL')}
+                    className={`px-3 py-1.5 rounded-xl font-bold transition-colors cursor-pointer ${
+                      auditActionFilter === 'ALL'
+                        ? 'bg-[#6D28D9] text-white shadow-xs'
+                        : 'bg-[#FFFCF5] hover:bg-[#FFF0D9] text-[#29243A] border border-[#E8E2D9]'
+                    }`}
+                  >
+                    All Events ({auditLogs.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAuditActionFilter('REGISTRATION')}
+                    className={`px-3 py-1.5 rounded-xl font-bold transition-colors cursor-pointer ${
+                      auditActionFilter === 'REGISTRATION'
+                        ? 'bg-indigo-700 text-white shadow-xs'
+                        : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200'
+                    }`}
+                  >
+                    🎓 Registrations ({regAuditCount})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAuditActionFilter('PAYMENT')}
+                    className={`px-3 py-1.5 rounded-xl font-bold transition-colors cursor-pointer ${
+                      auditActionFilter === 'PAYMENT'
+                        ? 'bg-amber-600 text-white shadow-xs'
+                        : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200'
+                    }`}
+                  >
+                    💳 Payments ({payAuditCount})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAuditActionFilter('SCAN')}
+                    className={`px-3 py-1.5 rounded-xl font-bold transition-colors cursor-pointer ${
+                      auditActionFilter === 'SCAN'
+                        ? 'bg-teal-700 text-white shadow-xs'
+                        : 'bg-teal-50 hover:bg-teal-100 text-teal-900 border border-teal-200'
+                    }`}
+                  >
+                    🎫 Gate & Dinner Scans ({scanAuditCount})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAuditActionFilter('ADMIN')}
+                    className={`px-3 py-1.5 rounded-xl font-bold transition-colors cursor-pointer ${
+                      auditActionFilter === 'ADMIN'
+                        ? 'bg-purple-800 text-white shadow-xs'
+                        : 'bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-200'
+                    }`}
+                  >
+                    ⚙️ Admin Modifications ({adminAuditCount})
+                  </button>
+                </div>
+              </div>
+
+              {/* Audit Table */}
+              <div className="overflow-x-auto rounded-2xl border border-[#E8E2D9] scrollbar-thin" style={{ WebkitOverflowScrolling: 'touch', maxHeight: '70vh' }}>
+                <table className="w-full min-w-[850px] text-left text-xs text-[#29243A]">
+                  <thead className="bg-[#FFF0D9] text-[#29243A] font-bold border-b border-[#E8E2D9] sticky top-0 z-10 shadow-2xs">
                     <tr>
-                      <th className="p-3.5">Timestamp</th>
-                      <th className="p-3.5">Actor</th>
-                      <th className="p-3.5">Action</th>
-                      <th className="p-3.5">Target</th>
-                      <th className="p-3.5">Reason / Justification</th>
+                      <th className="p-3.5 whitespace-nowrap">Timestamp (IST)</th>
+                      <th className="p-3.5 whitespace-nowrap">Actor</th>
+                      <th className="p-3.5 whitespace-nowrap">Action Event</th>
+                      <th className="p-3.5 whitespace-nowrap">Target Entity</th>
+                      <th className="p-3.5">Details & Reason</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#E8E2D9] bg-white">
-                    {auditLogs.map((log) => (
-                      <tr key={log.id} className="hover:bg-[#FFF0D9]/20 transition-colors">
-                        <td className="p-3.5 text-[#6B655D] whitespace-nowrap">
-                          {formatKolkataDateTime(log.created_at)}
+                    {filteredAuditLogs.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="p-8 text-center text-[#6B655D]">
+                          <History className="w-8 h-8 text-[#E8E2D9] mx-auto mb-2" />
+                          <p className="font-semibold text-sm text-[#29243A]">No audit logs found</p>
+                          <p className="text-xs text-[#6B655D] mt-0.5">
+                            {auditSearchQuery ? 'Try clearing or modifying your search filter.' : 'No events have been recorded yet.'}
+                          </p>
                         </td>
-                        <td className="p-3.5 font-bold text-[#6D28D9]">{log.actor_name || 'System Admin'}</td>
-                        <td className="p-3.5 font-mono text-[10px] font-bold text-[#29243A]">{log.action}</td>
-                        <td className="p-3.5 text-[#6B655D]">
-                          {log.target_type} ({log.target_id || 'general'})
-                        </td>
-                        <td className="p-3.5 text-[#29243A] max-w-sm">{log.reason || '—'}</td>
                       </tr>
-                    ))}
+                    ) : (
+                      filteredAuditLogs.map((log) => (
+                        <tr key={log.id} className="hover:bg-[#FFF0D9]/20 transition-colors">
+                          <td className="p-3 text-[#6B655D] whitespace-nowrap font-mono text-[11px]">
+                            {formatKolkataDateTime(log.created_at)}
+                          </td>
+                          <td className="p-3 font-bold text-[#6D28D9] whitespace-nowrap">
+                            {log.actor_name || 'System Admin'}
+                          </td>
+                          <td className="p-3 whitespace-nowrap">
+                            {getActionBadge(log.action)}
+                          </td>
+                          <td className="p-3 text-[#29243A] whitespace-nowrap font-medium">
+                            <span className="font-mono text-[11px] bg-gray-100 text-[#29243A] px-2 py-0.5 rounded border border-gray-200">
+                              {log.target_id || log.target_type || 'General'}
+                            </span>
+                          </td>
+                          <td className="p-3 text-[#29243A] leading-relaxed max-w-md">
+                            {log.reason || '—'}
+                          </td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
+              </div>
+
+              {/* Bottom Summary */}
+              <div className="flex items-center justify-between text-xs text-[#6B655D] pt-2 px-1">
+                <span>
+                  Showing <strong>{filteredAuditLogs.length}</strong> of <strong>{auditLogs.length}</strong> total unified audit trail events
+                </span>
+                {filteredAuditLogs.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+                    className="text-[#6D28D9] font-bold hover:underline cursor-pointer"
+                  >
+                    Back to Top ↑
+                  </button>
+                )}
               </div>
             </div>
           </div>
