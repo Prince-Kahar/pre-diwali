@@ -46,8 +46,15 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   // Authoritative amount - strictly set auto price to ₹300.00
   const feeMinor = event.registration_fee_minor_units || 30000;
   const amountRupees = (feeMinor / 100).toFixed(2);
-  const cleanUpiId = (event.payment_upi_id || '7862039083@upi').trim();
-  const cleanUpiName = (event.payment_upi_name || 'Prince Kahar').trim();
+  const primaryUpiId = (event.payment_upi_id || '7862039083@upi').trim();
+  const primaryUpiName = (event.payment_upi_name || 'Prince Kahar').trim();
+  const alternateUpiId = 'madhavikalathiya19@oksbi';
+  const alternateUpiName = 'Madhavi Kalathiya';
+
+  const [activeUpi, setActiveUpi] = useState<'primary' | 'alternate'>('primary');
+
+  const cleanUpiId = activeUpi === 'primary' ? primaryUpiId : alternateUpiId;
+  const cleanUpiName = activeUpi === 'primary' ? primaryUpiName : alternateUpiName;
   // Standard NPCI UPI URI specification with exact ₹300.00 pre-filled parameter
   const upiQuery = `pa=${cleanUpiId}&pn=${encodeURIComponent(cleanUpiName)}&am=${amountRupees}&cu=${registration.currency || 'INR'}&tn=PreDiwali`;
   const upiIntent = `upi://pay?${upiQuery}`;
@@ -295,6 +302,32 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
                 {/* Left Column: QR Code & Pay Now Button (lg:col-span-6) */}
                 <div className="lg:col-span-6 flex flex-col items-center justify-center space-y-4 p-4 sm:p-5 rounded-2xl bg-[#FFFCF5] border border-[#E8E2D9]">
+                    {/* UPI Account Switcher in case bank limit is reached */}
+                    <div className="w-full flex items-center gap-1.5 p-1 bg-[#FFF0D9] rounded-xl border border-[#E99A20]/40 text-xs font-bold">
+                      <button
+                        type="button"
+                        onClick={() => setActiveUpi('primary')}
+                        className={`flex-1 py-1.5 px-2 rounded-lg text-center transition-all cursor-pointer ${
+                          activeUpi === 'primary'
+                            ? 'bg-[#6D28D9] text-white shadow-xs'
+                            : 'text-[#6B655D] hover:text-[#29243A]'
+                        }`}
+                      >
+                        UPI 1: {primaryUpiName}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setActiveUpi('alternate')}
+                        className={`flex-1 py-1.5 px-2 rounded-lg text-center transition-all cursor-pointer ${
+                          activeUpi === 'alternate'
+                            ? 'bg-[#6D28D9] text-white shadow-xs'
+                            : 'text-[#6B655D] hover:text-[#29243A]'
+                        }`}
+                      >
+                        UPI 2: Backup Account
+                      </button>
+                    </div>
+
                     <div className="flex flex-col items-center gap-2.5 w-full">
                       <div className="p-3.5 bg-white rounded-2xl border border-[#E8E2D9] shadow-xs">
                         <img
@@ -313,7 +346,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                       </button>
                     </div>
 
-                  <div className="text-center space-y-1 w-full">
+                  <div className="text-center space-y-1.5 w-full">
                     <p className="text-xs text-[#29243A] font-bold">
                       Scan or Click Pay Now with Any UPI App
                     </p>
@@ -336,6 +369,17 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                         ✓ UPI ID copied to clipboard!
                       </span>
                     )}
+
+                    {/* Bank Limit Notice */}
+                    <div className="w-full p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-[#92400E] text-left space-y-0.5">
+                      <div className="flex items-center gap-1 font-bold text-[#B45309]">
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                        <span>Getting "Bank Limit Exceeded"?</span>
+                      </div>
+                      <p className="leading-snug text-[#78350F]">
+                        Banks limit personal UPI receiving accounts per day. If your bank says limit reached, simply tap <strong>UPI 2: Backup Account</strong> above or try another bank/UPI app.
+                      </p>
+                    </div>
                   </div>
 
                   {/* PROMINENT PAY NOW BUTTON FOR ALL UPI APPS */}
