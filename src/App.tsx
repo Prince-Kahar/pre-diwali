@@ -91,6 +91,9 @@ export function App() {
   // Sync event settings
   useEffect(() => {
     setEventSettings(dataService.getEventSettings());
+    dataService.initSupabase().then(() => {
+      setEventSettings(dataService.getEventSettings());
+    });
   }, []);
 
   const openStudentPassOrPayment = async (reg: Registration) => {

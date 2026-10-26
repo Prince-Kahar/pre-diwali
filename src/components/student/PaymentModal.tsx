@@ -49,16 +49,17 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
       ? (event.registration_fee_minor_units || 30000)
       : registration.expected_amount_minor_units;
   const amountRupees = (feeMinor / 100).toFixed(2);
-  const cleanUpiId = (event.payment_upi_id || 'madhavikalathiya19@oksbi').trim();
-  const cleanUpiName = (event.payment_upi_name || '2022_ Madhavi').trim();
+  const cleanUpiId = (event.payment_upi_id || '7862039083@upi').trim();
+  const cleanUpiName = (event.payment_upi_name || 'Madhavi Kalathiya').trim();
   // Standard NPCI UPI URI specification with exact ₹300.00 pre-filled parameter
   const upiQuery = `pa=${cleanUpiId}&pn=${encodeURIComponent(cleanUpiName)}&am=${amountRupees}&cu=${registration.currency || 'INR'}&tn=PreDiwali`;
   const upiIntent = `upi://pay?${upiQuery}`;
 
   const downloadQrCode = () => {
-    if (!upiQrDataUrl) return;
+    const targetUrl = paymentQrImage || upiQrDataUrl;
+    if (!targetUrl) return;
     const a = document.createElement('a');
-    a.href = upiQrDataUrl;
+    a.href = targetUrl;
     a.download = `PreDiwali_Payment_QR_300.png`;
     document.body.appendChild(a);
     a.click();
@@ -298,19 +299,13 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                 {/* Left Column: QR Code & Pay Now Button (lg:col-span-6) */}
                 <div className="lg:col-span-6 flex flex-col items-center justify-center space-y-4 p-4 sm:p-5 rounded-2xl bg-[#FFFCF5] border border-[#E8E2D9]">
                     <div className="flex flex-col items-center gap-2.5 w-full">
-                      {upiQrDataUrl ? (
-                        <div className="p-3.5 bg-white rounded-2xl border border-[#E8E2D9] shadow-xs">
-                          <img
-                            src={upiQrDataUrl}
-                            alt="Pre-Diwali ₹300 UPI QR Code"
-                            className="w-48 h-48 sm:w-56 sm:h-56 rounded-lg object-contain"
-                          />
-                        </div>
-                      ) : (
-                        <div className="w-48 h-48 sm:w-56 sm:h-56 bg-[#FFF0D9] rounded-2xl flex items-center justify-center">
-                          <Loader2 className="w-8 h-8 animate-spin text-[#E99A20]" />
-                        </div>
-                      )}
+                      <div className="p-3.5 bg-white rounded-2xl border border-[#E8E2D9] shadow-xs">
+                        <img
+                          src={paymentQrImage || upiQrDataUrl}
+                          alt="Pre-Diwali ₹300 UPI QR Code"
+                          className="w-48 h-48 sm:w-56 sm:h-56 rounded-lg object-contain"
+                        />
+                      </div>
                       <button
                         type="button"
                         onClick={downloadQrCode}

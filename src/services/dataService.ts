@@ -80,7 +80,7 @@ const DEFAULT_EVENT: EventSettings = {
   registration_enabled: true,
   entry_enabled: true,
   payment_mode: 'STATIC_UPI', // Static UPI only
-  payment_upi_id: 'madhavikalathiya19@oksbi',
+  payment_upi_id: '7862039083@upi',
   payment_upi_name: 'Madhavi Kalathiya',
   student_instructions: '1. Carry your physical college ID card alongside this QR Pass.\n2. QR pass is strictly one-time entry only. Once scanned at gate, it cannot be reused.\n3. Food coupon will be distributed at designated food counters based on registered preference (Regular / Jain).\n4. Traditional festive attire is strongly encouraged.',
   contact_email: 'prince.kahar.king@gmail.com',
@@ -160,8 +160,8 @@ class PreDiwaliDataStore {
       this.event.event_date = '2026-11-04T17:00:00+05:30';
       this.event.contact_email = 'prince.kahar.king@gmail.com';
       this.event.contact_phone = '7285056019';
-      this.event.payment_upi_id = 'madhavikalathiya19@oksbi';
-      this.event.payment_upi_name = 'Madhavi Kalathiya';
+      this.event.payment_upi_id = this.event.payment_upi_id || '7862039083@upi';
+      this.event.payment_upi_name = this.event.payment_upi_name || 'Madhavi Kalathiya';
       this.event.payment_mode = 'STATIC_UPI';
       this.event.registration_fee_minor_units = 30000;
       this.event.allowed_academic_years = ['FY - M.Sc.IT', 'FY - Data Science', 'SY - M.Sc.IT', 'SY - Data Science'];
@@ -405,7 +405,7 @@ class PreDiwaliDataStore {
     }
   }
 
-  public updateEventSettings(updated: Partial<EventSettings>, actorId: string): EventSettings {
+  public async updateEventSettings(updated: Partial<EventSettings>, actorId: string): Promise<EventSettings> {
     this.event = {
       ...this.event,
       ...updated,
@@ -413,6 +413,31 @@ class PreDiwaliDataStore {
     };
     this.addAuditLog(actorId, 'UPDATE_EVENT_SETTINGS', 'event', this.event.id, 'Updated event settings', updated);
     this.persist();
+
+    if (isSupabaseConfigured && supabase) {
+      try {
+        await supabase
+          .from('events')
+          .update({
+            payment_upi_id: this.event.payment_upi_id,
+            payment_upi_name: this.event.payment_upi_name,
+            college_name: this.event.college_name,
+            name: this.event.name,
+            venue: this.event.venue,
+            venue_directions: this.event.venue_directions,
+            contact_email: this.event.contact_email,
+            contact_phone: this.event.contact_phone,
+            registration_fee_minor_units: this.event.registration_fee_minor_units,
+            maximum_capacity: this.event.maximum_capacity,
+            registration_enabled: this.event.registration_enabled,
+            updated_at: this.event.updated_at,
+          })
+          .eq('id', this.event.id);
+      } catch (err) {
+        console.warn('Supabase updateEventSettings sync error:', err);
+      }
+    }
+
     return { ...this.event };
   }
 

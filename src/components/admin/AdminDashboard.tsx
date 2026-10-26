@@ -582,10 +582,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   // Save General Event Settings
-  const handleSaveSettings = (e: React.FormEvent) => {
+  const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const updated = dataService.updateEventSettings(settingsForm, adminUser.id);
+      const updated = await dataService.updateEventSettings(settingsForm, adminUser.id);
+      setSettingsForm({ ...updated });
       onUpdateEvent(updated);
       setSettingsSavedMsg(true);
       setTimeout(() => setSettingsSavedMsg(false), 3000);
