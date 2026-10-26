@@ -50,7 +50,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
       : registration.expected_amount_minor_units;
   const amountRupees = (feeMinor / 100).toFixed(2);
   const cleanUpiId = (event.payment_upi_id || '7862039083@upi').trim();
-  const cleanUpiName = (event.payment_upi_name || 'Madhavi Kalathiya').trim();
+  const cleanUpiName = (event.payment_upi_name || 'Prince Kahar').trim();
   // Standard NPCI UPI URI specification with exact ₹300.00 pre-filled parameter
   const upiQuery = `pa=${cleanUpiId}&pn=${encodeURIComponent(cleanUpiName)}&am=${amountRupees}&cu=${registration.currency || 'INR'}&tn=PreDiwali`;
   const upiIntent = `upi://pay?${upiQuery}`;
