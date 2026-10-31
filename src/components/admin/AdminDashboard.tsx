@@ -100,6 +100,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>(dataService.getAuditLogs());
   const [pricingHistory, setPricingHistory] = useState<PricingHistoryRecord[]>(dataService.getPricingHistory());
   const [scansList, setScansList] = useState<EntryScanLog[]>(dataService.getScansList());
+  const [scannerActivityFilter, setScannerActivityFilter] = useState<'ALL' | 'ENTRY' | 'DINNER'>('ALL');
 
   // Audit Logs Filter & Search State
   const [auditSearchQuery, setAuditSearchQuery] = useState('');
@@ -341,18 +342,39 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setCurrentPage(1);
   };
 
-  // Re-activate scanned QR pass (Allow re-entry / reuse)
+  // Re-activate scanned QR pass (Allow re-entry / reuse in 1 single click)
   const handleReactivatePass = async (passId: string, studentName?: string) => {
-    const confirmed = window.confirm(
-      `Allow ${studentName || 'this student'} to re-enter using their existing QR code? Their pass will be reset to VALID.`
-    );
-    if (!confirmed) return;
     try {
+      // 1. Instant optimistic state update for single-click responsiveness
+      setRegistrations((prev) =>
+        prev.map((r) => {
+          if (r.id === passId || r.pass?.id === passId) {
+            return {
+              ...r,
+              pass: r.pass
+                ? {
+                    ...r.pass,
+                    status: 'VALID',
+                    redeemed_at: undefined,
+                    redeemed_by: undefined,
+                    redeemed_by_name: undefined,
+                  }
+                : undefined,
+            };
+          }
+          return r;
+        })
+      );
+      setScansList((prev) =>
+        prev.filter((s) => !( (s.pass_id === passId || s.student_name === studentName) && s.scan_result === 'ENTRY_APPROVED' ))
+      );
+
+      // 2. Perform authoritative data store and Supabase update
       await dataService.reactivateUsedPassAdmin(passId, adminUser.id, 'Pass re-activated by admin for student re-entry');
       refreshAll();
-      alert('Entry pass re-activated successfully! The student can now scan their QR pass again at the gate.');
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Failed to reactivate pass');
+      refreshAll();
     }
   };
 
@@ -1025,6 +1047,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     l.action.includes('REISSUE')
   ).length;
 
+  const gateScansCount = scansList.filter((s) => s.scan_type === 'ENTRY' || s.scan_result === 'ENTRY_APPROVED').length;
+  const dinnerScansCount = scansList.filter((s) => s.scan_type === 'DINNER' || s.scan_result === 'DINNER_APPROVED' || s.reason_code === 'DINNER_COUNTER').length;
+  const displayedScans = scansList.filter((s) => {
+    if (scannerActivityFilter === 'ENTRY') {
+      return s.scan_type === 'ENTRY' || s.scan_result === 'ENTRY_APPROVED';
+    }
+    if (scannerActivityFilter === 'DINNER') {
+      return s.scan_type === 'DINNER' || s.scan_result === 'DINNER_APPROVED' || s.reason_code === 'DINNER_COUNTER';
+    }
+    return true;
+  });
+
   const exportAuditLogsExcel = () => {
     const rowsHtml = filteredAuditLogs
       .map((log, idx) => {
@@ -1559,26 +1593,61 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               </div>
 
-              {/* Gate Entry & Check-In Status */}
-              <div className="p-6 rounded-3xl bg-white border border-[#E8E2D9] shadow-xs space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-[#29243A]">
-                    <QrCode className="w-5 h-5 text-[#6D28D9]" />
-                    <h3 className="text-base font-bold">Gate Admission Status</h3>
+              {/* Gate Entry & Dinner Distribution Status (Side-by-side Grid) */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+                {/* Gate Entry & Check-In Status */}
+                <div className="p-6 rounded-3xl bg-white border border-[#E8E2D9] shadow-xs space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-[#29243A]">
+                      <QrCode className="w-5 h-5 text-[#6D28D9]" />
+                      <h3 className="text-base font-bold">Gate Admission Status</h3>
+                    </div>
+                    <span className="text-xs font-bold text-[#15803D]">
+                      {metrics.totalEntries} Admitted
+                    </span>
                   </div>
-                  <span className="text-xs font-bold text-[#15803D]">
-                    {metrics.totalEntries} Admitted
-                  </span>
+
+                  <div className="grid grid-cols-2 gap-4 pt-2">
+                    <div className="p-4 rounded-2xl bg-[#FFFCF5] border border-[#E8E2D9] text-center">
+                      <span className="text-xs text-[#6B655D] font-medium block">Checked-In At Gates</span>
+                      <span className="text-2xl font-black text-[#15803D]">{metrics.totalEntries}</span>
+                    </div>
+                    <div className="p-4 rounded-2xl bg-[#FFFCF5] border border-[#E8E2D9] text-center">
+                      <span className="text-xs text-[#6B655D] font-medium block">Yet To Check In</span>
+                      <span className="text-2xl font-black text-[#B45309]">{metrics.notCheckedIn}</span>
+                    </div>
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4 pt-2">
-                  <div className="p-4 rounded-2xl bg-[#FFFCF5] border border-[#E8E2D9] text-center">
-                    <span className="text-xs text-[#6B655D] font-medium block">Checked-In At Gates</span>
-                    <span className="text-2xl font-black text-[#15803D]">{metrics.totalEntries}</span>
+                {/* Dinner Meal Distribution Status */}
+                <div className="p-6 rounded-3xl bg-white border border-[#E8E2D9] shadow-xs space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-[#29243A]">
+                      <Utensils className="w-5 h-5 text-[#E99A20]" />
+                      <h3 className="text-base font-bold">Dinner Distribution Status</h3>
+                    </div>
+                    <span className="text-xs font-bold text-[#15803D]">
+                      {metrics.totalDinnersClaimed ?? 0} Claimed
+                    </span>
                   </div>
-                  <div className="p-4 rounded-2xl bg-[#FFFCF5] border border-[#E8E2D9] text-center">
-                    <span className="text-xs text-[#6B655D] font-medium block">Yet To Check In</span>
-                    <span className="text-2xl font-black text-[#B45309]">{metrics.notCheckedIn}</span>
+
+                  <div className="grid grid-cols-2 gap-4 pt-2">
+                    <div className="p-4 rounded-2xl bg-[#FFFCF5] border border-[#E8E2D9] text-center">
+                      <span className="text-xs text-[#6B655D] font-medium block">Claimed / Served</span>
+                      <span className="text-2xl font-black text-[#15803D]">{metrics.totalDinnersClaimed ?? 0}</span>
+                      <div className="flex items-center justify-center gap-1.5 text-[10px] text-[#6B655D] mt-1 font-semibold">
+                        <span>Reg: <strong className="text-[#29243A]">{metrics.regularDinnersClaimed ?? 0}</strong></span>
+                        <span>•</span>
+                        <span>Jain: <strong className="text-[#29243A]">{metrics.jainDinnersClaimed ?? 0}</strong></span>
+                      </div>
+                    </div>
+                    <div className="p-4 rounded-2xl bg-[#FFFCF5] border border-[#E8E2D9] text-center">
+                      <span className="text-xs text-[#6B655D] font-medium block">Yet To Claim Meal</span>
+                      <span className="text-2xl font-black text-[#B45309]">{metrics.dinnersNotClaimed ?? 0}</span>
+                      <div className="text-[10px] text-[#6B655D] mt-1 font-semibold">
+                        <span>Pending Food Tokens</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -3229,15 +3298,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
         )}
 
-        {/* ----------------- 8. ENTRY SCANNER ACTIVITY TAB ----------------- */}
+        {/* ----------------- 8. ENTRY & DINNER SCANNER ACTIVITY TAB ----------------- */}
         {activeTab === 'SCANNER_ACTIVITY' && (
           <div className="space-y-6">
-            <div className="p-6 rounded-3xl bg-white border border-[#E8E2D9] shadow-xs space-y-4">
+            <div className="p-6 rounded-3xl bg-white border border-[#E8E2D9] shadow-xs space-y-5">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                  <h2 className="text-xl font-black text-[#29243A]">Live Gate Entry Scanner Activity</h2>
+                  <h2 className="text-xl font-black text-[#29243A]">Live Scanner & Admission Activity</h2>
                   <p className="text-xs text-[#6B655D]">
-                    Authoritative chronological stream of all gate scans, admissions, and denied duplicate attempts.
+                    Authoritative chronological stream of all gate entry check-ins, dinner coupon distributions, and scan logs.
                   </p>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
@@ -3261,41 +3330,100 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               </div>
 
+              {/* Category Filter Pills */}
+              <div className="flex items-center gap-2 flex-wrap text-xs">
+                <button
+                  type="button"
+                  onClick={() => setScannerActivityFilter('ALL')}
+                  className={`px-3 py-1.5 rounded-xl font-bold transition-colors cursor-pointer ${
+                    scannerActivityFilter === 'ALL'
+                      ? 'bg-[#6D28D9] text-white shadow-xs'
+                      : 'bg-[#FFFCF5] hover:bg-[#FFF0D9] text-[#29243A] border border-[#E8E2D9]'
+                  }`}
+                >
+                  All Activity ({scansList.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setScannerActivityFilter('ENTRY')}
+                  className={`px-3 py-1.5 rounded-xl font-bold transition-colors cursor-pointer ${
+                    scannerActivityFilter === 'ENTRY'
+                      ? 'bg-emerald-700 text-white shadow-xs'
+                      : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-200'
+                  }`}
+                >
+                  🚪 Gate Admissions ({gateScansCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setScannerActivityFilter('DINNER')}
+                  className={`px-3 py-1.5 rounded-xl font-bold transition-colors cursor-pointer ${
+                    scannerActivityFilter === 'DINNER'
+                      ? 'bg-amber-600 text-white shadow-xs'
+                      : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200'
+                  }`}
+                >
+                  🍽️ Dinner Meal Claims ({dinnerScansCount})
+                </button>
+              </div>
+
               <div className="overflow-x-auto rounded-2xl border border-[#E8E2D9] scrollbar-thin" style={{ WebkitOverflowScrolling: 'touch' }}>
-                <table className="w-full min-w-[650px] text-left text-xs text-[#29243A]">
+                <table className="w-full min-w-[750px] text-left text-xs text-[#29243A]">
                   <thead className="bg-[#FFF0D9] text-[#29243A] font-bold border-b border-[#E8E2D9]">
                     <tr>
                       <th className="p-3.5">Timestamp</th>
-                      <th className="p-3.5">Gate Staff</th>
+                      <th className="p-3.5">Checkpoint</th>
+                      <th className="p-3.5">Staff / Volunteer</th>
                       <th className="p-3.5">Student</th>
                       <th className="p-3.5">Roll No</th>
+                      <th className="p-3.5">Meal Pref</th>
                       <th className="p-3.5">Scan Outcome</th>
                       <th className="p-3.5">Request Ref</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#E8E2D9] bg-white">
-                    {scansList.length === 0 ? (
+                    {displayedScans.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="p-8 text-center text-[#6B655D]">
-                          No scan events logged yet. Gate scanners will record scans here in real time.
+                        <td colSpan={8} className="p-8 text-center text-[#6B655D]">
+                          No scan events found for this filter. Scanners will stream live admissions here in real time.
                         </td>
                       </tr>
                     ) : (
-                      scansList.map((scan) => {
+                      displayedScans.map((scan) => {
                         const linkedPass = dataService.getPasses().find((p) => p.id === scan.pass_id || p.registration_id === scan.pass_id);
                         const linkedReg = registrations.find(
                           (r) => r.id === scan.pass_id || (linkedPass && r.id === linkedPass.registration_id)
                         );
                         const studentName = scan.student_name || linkedReg?.full_name || '—';
                         const rollNumber = scan.roll_number || (linkedReg ? formatRollWithCoursePrefix(linkedReg.normalized_roll_number, linkedReg.academic_year) : '—');
+                        const isDinner = scan.scan_type === 'DINNER' || scan.scan_result === 'DINNER_APPROVED' || scan.reason_code === 'DINNER_COUNTER';
+                        const foodPref = scan.food_preference || linkedReg?.food_preference || '—';
 
                         return (
                           <tr key={scan.id} className="hover:bg-[#FFF0D9]/20 transition-colors">
-                            <td className="p-3.5 text-[#6B655D]">{formatKolkataDateTime(scan.scanned_at)}</td>
-                            <td className="p-3.5 font-bold text-[#29243A]">{scan.staff_name || scan.staff_user_id}</td>
+                            <td className="p-3.5 text-[#6B655D] whitespace-nowrap">{formatKolkataDateTime(scan.scanned_at)}</td>
+                            <td className="p-3.5 whitespace-nowrap">
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1 ${
+                                  isDinner
+                                    ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                                    : 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                                }`}
+                              >
+                                {isDinner ? '🍽️ Dinner Meal' : '🚪 Gate Entry'}
+                              </span>
+                            </td>
+                            <td className="p-3.5 font-bold text-[#29243A] whitespace-nowrap">{scan.staff_name || scan.staff_user_id || 'Staff Scanner'}</td>
                             <td className="p-3.5 font-bold text-[#29243A]">{studentName}</td>
-                            <td className="p-3.5 font-mono font-bold text-[#6D28D9]">{rollNumber}</td>
-                            <td className="p-3.5">
+                            <td className="p-3.5 font-mono font-bold text-[#6D28D9] whitespace-nowrap">{rollNumber}</td>
+                            <td className="p-3.5 whitespace-nowrap">
+                              <span className={`px-2 py-0.5 rounded-md text-[10px] font-semibold ${
+                                foodPref === 'Jain' ? 'bg-emerald-50 text-emerald-800' : 'bg-orange-50 text-orange-800'
+                              }`}>
+                                {foodPref}
+                              </span>
+                            </td>
+                            <td className="p-3.5 whitespace-nowrap">
                               <span
                                 className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
                                   scan.scan_result === 'ENTRY_APPROVED' || scan.scan_result === 'DINNER_APPROVED'
@@ -3308,7 +3436,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 {scan.scan_result}
                               </span>
                             </td>
-                            <td className="p-3.5 font-mono text-[10px] text-[#6B655D]">{scan.request_id || '—'}</td>
+                            <td className="p-3.5 font-mono text-[10px] text-[#6B655D] whitespace-nowrap">{scan.request_id || '—'}</td>
                           </tr>
                         );
                       })

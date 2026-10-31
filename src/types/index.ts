@@ -237,6 +237,10 @@ export interface DashboardMetrics {
   validPassesIssued: number;
   totalEntries: number;
   notCheckedIn: number;
+  totalDinnersClaimed?: number;
+  dinnersNotClaimed?: number;
+  regularDinnersClaimed?: number;
+  jainDinnersClaimed?: number;
   fyCount: number;
   syCount: number;
   regularFoodCount: number;
