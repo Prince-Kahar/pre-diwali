@@ -178,6 +178,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
 
+  const showToast = (msg: string) => {
+    setSyncFeedback(msg);
+    setTimeout(() => {
+      setSyncFeedback((prev) => (prev === msg ? null : prev));
+    }, 3000);
+  };
+
   const refreshAll = () => {
     setMetrics(dataService.getDashboardMetrics());
     setRegistrations(dataService.getAllRegistrations());
@@ -242,10 +249,36 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     refreshAll();
     silentSyncAndRefresh();
 
-    // 1-second silent polling interval to guarantee instant live updates without UI flickering
-    const pollInterval = setInterval(() => {
-      silentSyncAndRefresh();
-    }, 1000);
+    // Fast live polling every 1.5 seconds for instant scan updates without UI freezing
+    let isPolling = false;
+    const pollInterval = setInterval(async () => {
+      if (isPolling) return;
+      isPolling = true;
+      try {
+        const changed = await dataService.syncLiveScanStatuses();
+        if (changed) {
+          refreshAll();
+        }
+      } catch {
+        // ignore
+      } finally {
+        isPolling = false;
+      }
+    }, 1500);
+
+    // Cross-tab synchronization via local storage
+    const handleStorageChange = (e: StorageEvent) => {
+      if (!e.key || e.key.includes('prediwali')) {
+        dataService.reloadFromStorage();
+        refreshAll();
+      }
+    };
+    const handleCustomLocalUpdate = () => {
+      refreshAll();
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('prediwali_local_update', handleCustomLocalUpdate);
 
     // Real-time Postgres changes subscription from Supabase
     const unsubscribe = dataService.subscribeToRealtimeChanges(() => {
@@ -254,6 +287,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
     return () => {
       clearInterval(pollInterval);
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('prediwali_local_update', handleCustomLocalUpdate);
       if (unsubscribe) {
         unsubscribe();
       }
@@ -368,10 +403,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setScansList((prev) =>
         prev.filter((s) => !( (s.pass_id === passId || s.student_name === studentName) && s.scan_result === 'ENTRY_APPROVED' ))
       );
+      setMetrics((prev) => ({
+        ...prev,
+        totalEntries: Math.max(0, prev.totalEntries - 1),
+        notCheckedIn: prev.notCheckedIn + 1,
+      }));
 
       // 2. Perform authoritative data store and Supabase update
       await dataService.reactivateUsedPassAdmin(passId, adminUser.id, 'Pass re-activated by admin for student re-entry');
       refreshAll();
+      showToast(`Pass re-activated for ${studentName || 'student'}. Existing QR can be scanned again.`);
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Failed to reactivate pass');
       refreshAll();
@@ -385,11 +426,36 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     );
     if (!confirmed) return;
     try {
+      let foodPref: FoodPreference = 'Regular';
+      setRegistrations((prev) =>
+        prev.map((r) => {
+          if (r.id === passId || r.pass?.id === passId) {
+            foodPref = r.food_preference;
+            return {
+              ...r,
+              pass: r.pass ? { ...r.pass, dinner_redeemed_at: undefined, dinner_redeemed_by: undefined } : undefined,
+            };
+          }
+          return r;
+        })
+      );
+      setMetrics((prev) => ({
+        ...prev,
+        totalDinnersClaimed: Math.max(0, (prev.totalDinnersClaimed ?? 0) - 1),
+        dinnersNotClaimed: (prev.dinnersNotClaimed ?? 0) + 1,
+        regularDinnersClaimed: foodPref === 'Regular' ? Math.max(0, (prev.regularDinnersClaimed ?? 0) - 1) : (prev.regularDinnersClaimed ?? 0),
+        jainDinnersClaimed: foodPref === 'Jain' ? Math.max(0, (prev.jainDinnersClaimed ?? 0) - 1) : (prev.jainDinnersClaimed ?? 0),
+      }));
+      setScansList((prev) =>
+        prev.filter((s) => !((s.pass_id === passId || s.student_name === studentName) && (s.scan_result === 'DINNER_APPROVED' || s.scan_type === 'DINNER')))
+      );
+
       await dataService.reactivateDinnerScanAdmin(passId, adminUser.id, 'Dinner meal status reset by admin');
       refreshAll();
-      alert('Dinner scan reset successfully! The student can now claim dinner again.');
+      showToast(`Dinner scan reset for ${studentName || 'student'}. They can claim dinner again.`);
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Failed to reset dinner scan');
+      refreshAll();
     }
   };
 
@@ -400,11 +466,63 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     );
     if (!confirmed) return;
     try {
+      const now = new Date().toISOString();
+      // 1. Optimistic UI update: update registrations, metrics, and scans list immediately
+      setRegistrations((prev) =>
+        prev.map((r) => {
+          if (r.id === passId || r.pass?.id === passId) {
+            let notesObj: Record<string, unknown> = {};
+            try {
+              if (r.internal_notes && typeof r.internal_notes === 'string') {
+                notesObj = JSON.parse(r.internal_notes);
+              }
+            } catch {}
+            notesObj.gate_entry_redeemed_at = now;
+            notesObj.gate_entry_redeemed_by = adminUser.display_name;
+
+            return {
+              ...r,
+              internal_notes: JSON.stringify(notesObj),
+              pass: r.pass
+                ? {
+                    ...r.pass,
+                    status: 'USED',
+                    redeemed_at: now,
+                    redeemed_by: adminUser.id,
+                    redeemed_by_name: adminUser.display_name,
+                  }
+                : undefined,
+            };
+          }
+          return r;
+        })
+      );
+      setMetrics((prev) => ({
+        ...prev,
+        totalEntries: prev.totalEntries + 1,
+        notCheckedIn: Math.max(0, prev.notCheckedIn - 1),
+      }));
+      setScansList((prev) => [
+        {
+          id: `scan-${Date.now()}`,
+          event_id: event.id,
+          pass_id: passId,
+          staff_user_id: adminUser.id,
+          staff_name: adminUser.display_name,
+          scan_result: 'ENTRY_APPROVED',
+          scanned_at: now,
+          student_name: studentName,
+          scan_type: 'ENTRY',
+        },
+        ...prev,
+      ]);
+
       await dataService.markGateEntryDoneAdmin(passId, adminUser.id);
       refreshAll();
-      alert('Gate Entry QR marked as DONE successfully!');
+      showToast(`Gate Entry QR marked as DONE for ${studentName || 'student'}`);
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Failed to mark gate entry done');
+      refreshAll();
     }
   };
 
@@ -415,11 +533,65 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     );
     if (!confirmed) return;
     try {
+      const now = new Date().toISOString();
+      let foodPref: FoodPreference = 'Regular';
+      setRegistrations((prev) =>
+        prev.map((r) => {
+          if (r.id === passId || r.pass?.id === passId) {
+            foodPref = r.food_preference;
+            let notesObj: Record<string, unknown> = {};
+            try {
+              if (r.internal_notes && typeof r.internal_notes === 'string') {
+                notesObj = JSON.parse(r.internal_notes);
+              }
+            } catch {}
+            notesObj.dinner_redeemed_at = now;
+            notesObj.dinner_redeemed_by = adminUser.display_name;
+
+            return {
+              ...r,
+              internal_notes: JSON.stringify(notesObj),
+              pass: r.pass
+                ? {
+                    ...r.pass,
+                    dinner_redeemed_at: now,
+                    dinner_redeemed_by: adminUser.id,
+                    dinner_redeemed_by_name: adminUser.display_name,
+                  }
+                : undefined,
+            };
+          }
+          return r;
+        })
+      );
+      setMetrics((prev) => ({
+        ...prev,
+        totalDinnersClaimed: (prev.totalDinnersClaimed ?? 0) + 1,
+        dinnersNotClaimed: Math.max(0, (prev.dinnersNotClaimed ?? 0) - 1),
+        regularDinnersClaimed: foodPref === 'Regular' ? (prev.regularDinnersClaimed ?? 0) + 1 : (prev.regularDinnersClaimed ?? 0),
+        jainDinnersClaimed: foodPref === 'Jain' ? (prev.jainDinnersClaimed ?? 0) + 1 : (prev.jainDinnersClaimed ?? 0),
+      }));
+      setScansList((prev) => [
+        {
+          id: `scan-${Date.now()}`,
+          event_id: event.id,
+          pass_id: passId,
+          staff_user_id: adminUser.id,
+          staff_name: adminUser.display_name,
+          scan_result: 'DINNER_APPROVED',
+          scanned_at: now,
+          student_name: studentName,
+          scan_type: 'DINNER',
+        },
+        ...prev,
+      ]);
+
       await dataService.markDinnerScanDoneAdmin(passId, adminUser.id);
       refreshAll();
-      alert('Dinner QR Scan marked as DONE successfully!');
+      showToast(`Dinner QR Scan marked as DONE for ${studentName || 'student'}`);
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Failed to mark dinner scan done');
+      refreshAll();
     }
   };
 
@@ -1173,7 +1345,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   return (
-    <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 min-h-[82vh] w-full max-w-full min-w-0 bg-[#FFFCF5]">
+    <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 min-h-[82vh] w-full max-w-full min-w-0 bg-[#FFFCF5] relative">
+      {/* Real-time Status Toast Notification */}
+      {syncFeedback && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 bg-[#15803D] text-white px-4 py-3 rounded-2xl shadow-2xl border border-emerald-400 pointer-events-none transition-all">
+          <CheckCircle2 className="w-4 h-4 text-emerald-200 shrink-0" />
+          <span className="text-xs font-bold tracking-wide">{syncFeedback}</span>
+        </div>
+      )}
       {/* ----------------- MOBILE NAVIGATION BAR (< lg) ----------------- */}
       <div className="lg:hidden bg-white border border-[#E8E2D9] rounded-2xl sm:rounded-3xl p-3 sm:p-4 shadow-xs space-y-3">
         <div className="flex items-center justify-between pb-2 border-b border-[#E8E2D9]">
