@@ -2437,36 +2437,13 @@ class PreDiwaliDataStore {
           }
         }
 
+        // If gate entry was not yet scanned when arriving at dinner counter, auto-admit gate admission seamlessly
         if (!hasCompletedGateEntry) {
-          this.scans.unshift({
-            id: `scan-${Date.now()}`,
-            event_id: this.event.id,
-            pass_id: pass.id,
-            scan_type: 'DINNER',
-            staff_user_id: staffUserId,
-            staff_name: staff.display_name,
-            scan_result: 'GATE_ENTRY_NOT_DONE',
-            scanned_at: now,
-            request_id: requestId,
-            reason_code: 'GATE_ENTRY_REQUIRED_FIRST',
-            student_name: reg.full_name,
-            roll_number: reg.normalized_roll_number,
-            food_preference: reg.food_preference,
-          });
-          this.persist();
-
-          return {
-            success: false,
-            status: 'GATE_ENTRY_NOT_DONE',
-            scan_type: 'DINNER',
-            message: 'DINNER DENIED — GATE ENTRY NOT SCANNED! Student must scan QR at Main Gate first.',
-            student_name: reg.full_name,
-            roll_number: reg.normalized_roll_number,
-            academic_year: reg.academic_year,
-            food_preference: reg.food_preference,
-            performance_talent: reg.performance_talent,
-            identity_photo_url: reg.identity_photo_url,
-          };
+          pass.status = 'USED';
+          pass.redeemed_at = now;
+          pass.redeemed_by = staffUserId;
+          pass.redeemed_by_name = `${staff.display_name} (Auto-Admitted)`;
+          hasCompletedGateEntry = true;
         }
 
         // Strict check: if dinner already claimed

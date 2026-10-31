@@ -52,6 +52,8 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
 }) => {
   // Dual Scan Mode: ENTRY (Gate) or DINNER (Food counter)
   const [scanType, setScanType] = useState<ScanType>('ENTRY');
+  const scanTypeRef = useRef<ScanType>('ENTRY');
+  scanTypeRef.current = scanType;
 
   const [isScanning, setIsScanning] = useState(false);
   const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
@@ -204,7 +206,8 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
 
         // Prevent accidental instant duplicate auto-scans for the same token in this scan mode
         const now = Date.now();
-        const scanKey = `${scanType}_${cleanToken}`;
+        const currentMode = scanTypeRef.current || scanType;
+        const scanKey = `${currentMode}_${cleanToken}`;
         const lastTime = recentlyProcessedTokensRef.current.get(scanKey);
         if (lastTime && now - lastTime < 2500) {
           return;
@@ -219,8 +222,8 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
         // Stop camera cleanly in background so it never scans twice
         await stopCamera();
 
-        // Process the single verified scan
-        await handleProcessToken(cleanToken);
+        // Process the single verified scan with synchronous current mode
+        await handleProcessToken(cleanToken, currentMode);
       };
 
       try {
@@ -300,14 +303,15 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
     }
   };
 
-  const handleProcessToken = async (token: string) => {
+  const handleProcessToken = async (token: string, modeOverride?: ScanType) => {
+    const activeMode = modeOverride || scanTypeRef.current || scanType;
     setIsProcessing(true);
     try {
       const result = await dataService.redeemEntryPass(
         token.trim(),
         staffUser.id,
-        `${scanType.toLowerCase()}-${Date.now()}`,
-        scanType
+        `${activeMode.toLowerCase()}-${Date.now()}`,
+        activeMode
       );
       setScanResult(result);
       loadStaffScans();
@@ -323,7 +327,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
       setScanResult({
         success: false,
         status: 'INVALID_PASS',
-        scan_type: scanType,
+        scan_type: activeMode,
         message: err instanceof Error ? err.message : 'Error validating pass',
       });
     } finally {
@@ -337,7 +341,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
     const clean = manualToken.trim();
     sound.playScanBeep();
     stopCamera();
-    await handleProcessToken(clean);
+    await handleProcessToken(clean, scanTypeRef.current);
     setManualToken('');
     setShowManualInput(false);
   };
@@ -357,7 +361,7 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
       const decodedText = await scannerRef.current.scanFile(file, true);
       sound.playScanBeep();
       stopCamera();
-      await handleProcessToken(decodedText);
+      await handleProcessToken(decodedText, scanTypeRef.current);
     } catch (err) {
       sound.playErrorBuzz();
       alert('Could not detect a valid QR code from this image. Please make sure the QR code is clearly visible.');
@@ -376,8 +380,9 @@ export const StaffScanner: React.FC<StaffScannerProps> = ({
   };
 
   const switchScanMode = async (mode: ScanType) => {
-    if (scanType === mode) return;
+    if (scanTypeRef.current === mode && scanType === mode) return;
     sound.init();
+    scanTypeRef.current = mode;
     setScanType(mode);
     setScanResult(null);
     cooldownRef.current = false;
